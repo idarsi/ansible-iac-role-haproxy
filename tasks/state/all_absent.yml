@@ -1,0 +1,55 @@
+---
+- name: "Check role-managed marker before cleanup"
+  ansible.builtin.stat:
+    path: "{{ haproxy_managed_marker }}"
+    follow: false
+  register: haproxy_marker
+
+- name: "Check configuration directory is not a symlink"
+  ansible.builtin.stat:
+    path: "{{ haproxy_config_directory }}"
+    follow: false
+  register: haproxy_config_directory_marker
+
+- name: "Read role-managed ownership marker"
+  ansible.builtin.slurp:
+    src: "{{ haproxy_managed_marker }}"
+  register: haproxy_marker_content
+  when: haproxy_marker.stat.exists and haproxy_marker.stat.isreg
+
+- name: "Require ownership of the configuration directory"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_marker.stat.exists and haproxy_marker.stat.isreg"
+      - "haproxy_config_directory_marker.stat.exists and haproxy_config_directory_marker.stat.isdir"
+      - "haproxy_config_directory_marker.stat.pw_name == 'root'"
+      - "haproxy_marker.stat.pw_name == 'root'"
+      - "haproxy_marker.stat.mode == '0600'"
+      - "(haproxy_marker_content.content | b64decode) == 'role_managed_configuration=true\\n'"
+    fail_msg: "Refusing all_absent: the configuration directory or marker is not a safe role-managed path."
+
+- name: "Reuse uninstall state"
+  ansible.builtin.include_tasks: "state/uninstall.yml"
+
+- name: "Remove only role-managed HAProxy configuration"
+  ansible.builtin.file:
+    path: "{{ haproxy_config_path }}"
+    state: "absent"
+
+- name: "Remove role-managed ownership marker"
+  ansible.builtin.file:
+    path: "{{ haproxy_managed_marker }}"
+    state: "absent"
+
+- name: "Inspect remaining configuration directory contents"
+  ansible.builtin.find:
+    paths: "{{ haproxy_config_directory }}"
+    recurse: false
+    file_type: "any"
+  register: haproxy_remaining_config_files
+
+- name: "Remove empty role-created configuration directory"
+  ansible.builtin.file:
+    path: "{{ haproxy_config_directory }}"
+    state: "absent"
+  when: haproxy_remaining_config_files.files | length == 0

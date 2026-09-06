@@ -1,0 +1,9 @@
+---
+- name: "Validate HAProxy"
+  hosts: "all"
+  vars:
+    state: "validate"
+    iac_blueprint:
+      haproxy: {}
+  roles:
+    - role: "ansible-iac-role-haproxy"

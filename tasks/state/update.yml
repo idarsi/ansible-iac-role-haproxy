@@ -1,0 +1,3 @@
+---
+- name: "Reuse present state"
+  ansible.builtin.include_tasks: "state/present.yml"

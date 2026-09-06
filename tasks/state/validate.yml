@@ -1,0 +1,4 @@
+---
+- name: "Validation-only state completed"
+  ansible.builtin.debug:
+    msg: "HAProxy inventory validation passed; no host changes were made."

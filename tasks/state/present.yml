@@ -1,0 +1,51 @@
+---
+- name: "Install HAProxy package"
+  ansible.builtin.package:
+    name: "{{ haproxy_package_name }}"
+    state: "present"
+
+- name: "Ensure HAProxy configuration directory exists"
+  ansible.builtin.stat:
+    path: "{{ haproxy_config_directory }}"
+  register: haproxy_config_directory_before
+
+- name: "Check existing HAProxy ownership marker"
+  ansible.builtin.stat:
+    path: "{{ haproxy_managed_marker }}"
+    follow: false
+  register: haproxy_marker_before
+
+- name: "Ensure HAProxy configuration directory exists"
+  ansible.builtin.file:
+    path: "{{ haproxy_config_directory }}"
+    state: "directory"
+    owner: "root"
+    group: "root"
+    mode: "0755"
+
+- name: "Write HAProxy managed marker"
+  ansible.builtin.copy:
+    dest: "{{ haproxy_managed_marker }}"
+    content: "role_managed_configuration=true\n"
+    owner: "root"
+    group: "root"
+    mode: "0600"
+  when: not haproxy_marker_before.stat.exists | default(false)
+
+- name: "Render HAProxy configuration"
+  ansible.builtin.template:
+    src: "haproxy.cfg.j2"
+    dest: "{{ haproxy_config_path }}"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+    validate: "{{ haproxy_binary_path }} -c -f %s"
+  notify:
+    - "validate haproxy configuration"
+    - "reload haproxy"
+
+- name: "Enable and start HAProxy"
+  ansible.builtin.service:
+    name: "{{ haproxy_service_name }}"
+    enabled: true
+    state: "started"

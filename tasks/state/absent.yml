@@ -1,0 +1,3 @@
+---
+- name: "Reuse uninstall state"
+  ansible.builtin.include_tasks: "state/uninstall.yml"

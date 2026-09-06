@@ -1,0 +1,29 @@
+---
+iac_supported_os:
+  - name: "Rocky"
+    versions: ["9", "10"]
+  - name: "RedHat"
+    versions: ["9", "10"]
+
+haproxy_package_name: "haproxy"
+haproxy_service_name: "haproxy"
+haproxy_binary_path: "/usr/sbin/haproxy"
+haproxy_config_path: "/etc/haproxy/haproxy.cfg"
+haproxy_config_directory: "/etc/haproxy"
+haproxy_managed_marker: "/etc/haproxy/.idarsi-managed"
+
+haproxy_default_blueprint:
+  global:
+    maxconn: 2048
+  defaults:
+    mode: "http"
+    timeout_connect: "5s"
+    timeout_client: "50s"
+    timeout_server: "50s"
+  frontends: []
+  backends: []
+  stats:
+    enabled: false
+    bind: "127.0.0.1"
+    port: 8404
+    uri: "/stats"

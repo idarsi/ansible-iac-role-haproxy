@@ -1,0 +1,22 @@
+---
+all:
+  hosts:
+    haproxy-01:
+      ansible_connection: "local"
+      iac_blueprint:
+        haproxy:
+          frontends:
+            - name: "web"
+              bind: "127.0.0.1"
+              port: 8080
+              default_backend: "apps"
+          backends:
+            - name: "apps"
+              servers:
+                - name: "app1"
+                  address: "127.0.0.1"
+                  port: 9000
+          stats:
+            enabled: true
+            bind: "127.0.0.1"
+            port: 8404

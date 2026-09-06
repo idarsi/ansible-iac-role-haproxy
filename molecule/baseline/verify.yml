@@ -1,0 +1,32 @@
+---
+- name: "Verify HAProxy"
+  hosts: "all"
+  tasks:
+    - name: "Read configuration"
+      ansible.builtin.slurp:
+        src: "/etc/haproxy/haproxy.cfg"
+      register: haproxy_config
+    - name: "Validate HAProxy configuration"
+      ansible.builtin.command: "/usr/sbin/haproxy -c -f /etc/haproxy/haproxy.cfg"
+      changed_when: false
+    - name: "Gather service facts"
+      ansible.builtin.service_facts:
+    - name: "Inspect managed files"
+      ansible.builtin.stat:
+        path: "{{ haproxy_managed_file.path }}"
+      loop:
+        - path: "/etc/haproxy/haproxy.cfg"
+        - path: "/etc/haproxy/.idarsi-managed"
+      loop_control:
+        loop_var: "haproxy_managed_file"
+      register: haproxy_managed_files
+    - name: "Check resources"
+      ansible.builtin.assert:
+        that:
+          - "'frontend web' in (haproxy_config.content | b64decode)"
+          - "'backend apps' in (haproxy_config.content | b64decode)"
+          - "'haproxy.service' in ansible_facts.services"
+          - "haproxy_managed_files.results[0].stat.pw_name == 'root'"
+          - "haproxy_managed_files.results[0].stat.mode == '0644'"
+          - "haproxy_managed_files.results[1].stat.pw_name == 'root'"
+          - "haproxy_managed_files.results[1].stat.mode == '0600'"

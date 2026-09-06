@@ -1,0 +1,16 @@
+---
+- name: "Stop HAProxy before uninstall"
+  block:
+    - name: "Gather service facts"
+      ansible.builtin.service_facts:
+
+    - name: "Stop HAProxy before uninstall"
+      ansible.builtin.service:
+        name: "{{ haproxy_service_name }}"
+        state: "stopped"
+      when: (haproxy_service_name + '.service') in ansible_facts.services
+
+- name: "Uninstall HAProxy package"
+  ansible.builtin.package:
+    name: "{{ haproxy_package_name }}"
+    state: "absent"

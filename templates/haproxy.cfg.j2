@@ -1,0 +1,34 @@
+{% set h = haproxy_blueprint %}
+global
+{% for key, value in h.global.items() %}
+  {{ key | replace('_', ' ') }}{% if value is sequence and value is not string %} {{ value | join(' ') }}{% else %} {{ value }}{% endif %}{{ '\n' }}
+{% endfor %}
+{{ '\n' }}
+defaults
+{% for key, value in h.defaults.items() %}
+  {{ key | replace('_', ' ') }}{% if value is sequence and value is not string %} {{ value | join(' ') }}{% else %} {{ value }}{% endif %}{{ '\n' }}
+{% endfor %}
+{{ '\n' }}
+{% for frontend in h.frontends %}
+frontend {{ frontend.name }}
+  bind {% if ':' in frontend.bind %}[{{ frontend.bind }}]{% else %}{{ frontend.bind }}{% endif %}:{{ frontend.port }}{% for certificate in frontend.certificates | default([]) %} ssl crt {{ certificate }}{% endfor %}{{ '\n' }}
+  mode {{ frontend.mode | default(h.defaults.mode | default('http')) }}{{ '\n' }}
+{% if frontend.default_backend is defined %}
+  default_backend {{ frontend.default_backend }}{{ '\n' }}
+{% endif %}
+{% endfor %}
+{{ '\n' }}
+{% for backend in h.backends %}
+backend {{ backend.name }}
+  mode {{ backend.mode | default(h.defaults.mode | default('http')) }}{{ '\n' }}
+{% for server in backend.servers %}
+  server {{ server.name }} {{ server.address }}:{{ server.port }}{% if server.check | default(true) %} check{% endif %}{% if server.ssl | default(false) %} ssl{% endif %}{{ '\n' }}
+{% endfor %}
+{% endfor %}
+{% if h.stats.enabled | default(false) %}
+listen stats
+  bind {% if ':' in (h.stats.bind | default('127.0.0.1')) %}[{{ h.stats.bind | default('127.0.0.1') }}]{% else %}{{ h.stats.bind | default('127.0.0.1') }}{% endif %}:{{ h.stats.port | default(8404) }}{{ '\n' }}
+  mode http{{ '\n' }}
+  stats enable{{ '\n' }}
+  stats uri {{ h.stats.uri | default('/stats') }}{{ '\n' }}
+{% endif %}

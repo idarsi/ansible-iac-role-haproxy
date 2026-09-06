@@ -1,0 +1,150 @@
+---
+- name: "Validate HAProxy state"
+  ansible.builtin.assert:
+    that:
+      - "(state | default('present')) in ['validate', 'install', 'update', 'uninstall', 'present', 'absent', 'all_absent', 'started', 'stopped', 'restarted']"
+    fail_msg: "Unsupported state '{{ state | default('present') }}'."
+
+- name: "Validate destructive cleanup path"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_config_directory is string"
+      - "haproxy_config_directory.startswith('/')"
+      - "haproxy_config_directory not in ['/', '/etc', '/usr', '/var', '/home', '/root']"
+      - "haproxy_managed_marker == haproxy_config_directory ~ '/.idarsi-managed'"
+      - "haproxy_config_path.startswith(haproxy_config_directory ~ '/')"
+    fail_msg: "all_absent requires a non-empty absolute configuration directory that is not a system parent path."
+  when: (state | default('present')) == 'all_absent'
+
+- name: "Validate HAProxy managed paths"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_config_directory is string and haproxy_config_directory.startswith('/')"
+      - "haproxy_config_path is string and haproxy_config_path.startswith('/')"
+      - "haproxy_managed_marker == haproxy_config_directory ~ '/.idarsi-managed'"
+      - "'..' not in haproxy_config_directory.split('/')"
+      - "'..' not in haproxy_config_path.split('/')"
+      - "haproxy_config_path.startswith(haproxy_config_directory ~ '/')"
+    fail_msg: "HAProxy managed paths must be absolute, canonical child paths without '..' components."
+
+- name: "Validate HAProxy blueprint types"
+  ansible.builtin.assert:
+    that:
+      - "iac_blueprint.haproxy.global | default({}) is mapping"
+      - "iac_blueprint.haproxy.defaults | default({}) is mapping"
+      - "iac_blueprint.haproxy.frontends | default([]) is sequence and iac_blueprint.haproxy.frontends | default([]) is not string"
+      - "iac_blueprint.haproxy.backends | default([]) is sequence and iac_blueprint.haproxy.backends | default([]) is not string"
+      - "iac_blueprint.haproxy.stats | default({}) is mapping"
+    fail_msg: "HAProxy global, defaults and stats must be mappings; frontends and backends must be lists."
+
+- name: "Validate HAProxy modes and defaults"
+  ansible.builtin.assert:
+    that:
+      - "(iac_blueprint.haproxy.defaults.mode | default('http')) in ['http', 'tcp']"
+      - >-
+        (iac_blueprint.haproxy.frontends | default([]) | selectattr('mode', 'defined') |
+        map(attribute='mode') | list | difference(['http', 'tcp']) | length) == 0
+      - >-
+        (iac_blueprint.haproxy.backends | default([]) | selectattr('mode', 'defined') |
+        map(attribute='mode') | list | difference(['http', 'tcp']) | length) == 0
+    fail_msg: "HAProxy modes must be 'http' or 'tcp'."
+
+- name: "Validate unique HAProxy names"
+  ansible.builtin.assert:
+    that:
+      - >-
+        (iac_blueprint.haproxy.frontends | default([]) | map(attribute='name') | list |
+         unique | length) == (iac_blueprint.haproxy.frontends | default([]) | length)
+      - >-
+        (iac_blueprint.haproxy.backends | default([]) | map(attribute='name') | list |
+        unique | length) == (iac_blueprint.haproxy.backends | default([]) | length)
+      - >-
+        (iac_blueprint.haproxy.frontends | default([]) | map(attribute='name') | list |
+        intersect(iac_blueprint.haproxy.backends | default([]) | map(attribute='name') |
+        list) | length) == 0
+    fail_msg: "Frontend and backend names are required and must be unique across HAProxy resources."
+
+- name: "Validate HAProxy record types"
+  ansible.builtin.assert:
+    that:
+      - "(iac_blueprint.haproxy.frontends | default([]) | select('mapping') | list | length) == (iac_blueprint.haproxy.frontends | default([]) | length)"
+      - "(iac_blueprint.haproxy.backends | default([]) | select('mapping') | list | length) == (iac_blueprint.haproxy.backends | default([]) | length)"
+    fail_msg: "HAProxy frontends and backends must contain mapping records."
+
+- name: "Validate frontend records"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_frontend.name is string and haproxy_frontend.name is match('^[A-Za-z][A-Za-z0-9_.-]*$')"
+      - "haproxy_frontend.bind is defined and haproxy_frontend.bind is string"
+      - "not (haproxy_frontend.bind is search('[\\x00-\\x1f\\x7f]'))"
+      - "haproxy_frontend.port is integer and haproxy_frontend.port >= 1 and haproxy_frontend.port <= 65535"
+      - "haproxy_frontend.default_backend is not defined or haproxy_frontend.default_backend is string"
+      - >-
+        haproxy_frontend.default_backend is not defined or
+        haproxy_frontend.default_backend in (iac_blueprint.haproxy.backends | default([]) |
+        map(attribute='name') | list)
+      - "(haproxy_frontend.certificates | default([]) | select('string') | list | length) == (haproxy_frontend.certificates | default([]) | length)"
+      - "(haproxy_frontend.certificates | default([]) | select('match', '^/') | list | length) == (haproxy_frontend.certificates | default([]) | length)"
+      - "(haproxy_frontend.certificates | default([]) | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0"
+    fail_msg: "Each frontend needs a valid name, bind address, port, and backend reference."
+  loop: "{{ iac_blueprint.haproxy.frontends | default([]) }}"
+  loop_control:
+    loop_var: "haproxy_frontend"
+
+- name: "Validate backend records and server ports"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_backend.name is string and haproxy_backend.name is match('^[A-Za-z][A-Za-z0-9_.-]*$')"
+      - >-
+        haproxy_backend.servers is defined and haproxy_backend.servers is sequence and
+        haproxy_backend.servers is not string and haproxy_backend.servers | length > 0
+      - "(haproxy_backend.servers | select('mapping') | list | length) == (haproxy_backend.servers | length)"
+      - "(haproxy_backend.servers | map(attribute='name') | list | unique | length) == (haproxy_backend.servers | length)"
+      - "(haproxy_backend.servers | map(attribute='port') | select('integer') | list | length) == (haproxy_backend.servers | length)"
+      - "(haproxy_backend.servers | map(attribute='port') | select('ge', 1) | select('le', 65535) | list | length) == (haproxy_backend.servers | length)"
+      - "(haproxy_backend.servers | map(attribute='address') | select('string') | list | length) == (haproxy_backend.servers | length)"
+    fail_msg: "Each backend needs at least one server with unique names and ports from 1 to 65535."
+  loop: "{{ iac_blueprint.haproxy.backends | default([]) }}"
+  loop_control:
+    loop_var: "haproxy_backend"
+
+- name: "Validate HAProxy server values"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_server_record.1.name is string and haproxy_server_record.1.name is match('^[A-Za-z][A-Za-z0-9_.-]*$')"
+      - "haproxy_server_record.1.address is string and not (haproxy_server_record.1.address is search('[\\x00-\\x1f\\x7f]'))"
+      - "haproxy_server_record.1.check | default(true) is boolean"
+      - "haproxy_server_record.1.ssl | default(false) is boolean"
+  loop: "{{ query('ansible.builtin.subelements', iac_blueprint.haproxy.backends | default([]), 'servers') }}"
+  loop_control:
+    loop_var: "haproxy_server_record"
+
+- name: "Validate stats safety and certificates"
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (iac_blueprint.haproxy.stats.enabled | default(false)) or
+        (iac_blueprint.haproxy.stats.bind | default('127.0.0.1')) in
+        ['127.0.0.1', '::1', 'localhost']
+      - "iac_blueprint.haproxy.stats.enabled | default(false) is boolean"
+      - >-
+        not (iac_blueprint.haproxy.stats.enabled | default(false)) or
+        ((iac_blueprint.haproxy.stats.port | default(8404)) is integer and
+        iac_blueprint.haproxy.stats.port | default(8404) >= 1 and
+        iac_blueprint.haproxy.stats.port | default(8404) <= 65535)
+      - >-
+        not (iac_blueprint.haproxy.stats.enabled | default(false)) or
+        ((iac_blueprint.haproxy.stats.uri | default('/stats')) is string and
+        (iac_blueprint.haproxy.stats.uri | default('/stats')) is match('^/') and
+        not ((iac_blueprint.haproxy.stats.uri | default('/stats')) is search('[\\x00-\\x1f\\x7f]')))
+    fail_msg: "Stats must bind to loopback with a valid port and URI."
+
+- name: "Validate global and defaults directives"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_directive.key is string and haproxy_directive.key is match('^[A-Za-z][A-Za-z0-9_-]*$')"
+      - "not ((haproxy_directive.value | string) is search('[\\x00-\\x1f\\x7f]'))"
+    fail_msg: "HAProxy global and defaults directives must use safe names and values."
+  loop: "{{ (iac_blueprint.haproxy.global | default({}) | dict2items) + (iac_blueprint.haproxy.defaults | default({}) | dict2items) }}"
+  loop_control:
+    loop_var: "haproxy_directive"

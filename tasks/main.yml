@@ -1,0 +1,34 @@
+---
+- name: "Check execution context"
+  ansible.builtin.assert:
+    that:
+      - "ansible_facts['distribution'] is defined"
+      - "ansible_facts['distribution_major_version'] is defined"
+    fail_msg: "Gathered distribution facts are required."
+
+- name: "Check supported operating system"
+  ansible.builtin.fail:
+    msg: "Unsupported operating system: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}"
+  when: >-
+    iac_supported_os | selectattr('name', 'equalto', ansible_facts['distribution'])
+    | selectattr('versions', 'contains', ansible_facts['distribution_major_version']) | list | length == 0
+
+- name: "Require HAProxy blueprint"
+  ansible.builtin.assert:
+    that:
+      - "iac_blueprint is defined"
+      - "iac_blueprint is mapping"
+      - "iac_blueprint.haproxy is defined"
+      - "iac_blueprint.haproxy is mapping"
+    fail_msg: "Define iac_blueprint.haproxy as a mapping."
+
+- name: "Validate HAProxy inventory"
+  ansible.builtin.include_tasks: "validate/validate_inventory.yml"
+
+- name: "Normalize HAProxy blueprint"
+  ansible.builtin.set_fact:
+    haproxy_blueprint: "{{ haproxy_default_blueprint | combine(iac_blueprint.haproxy, recursive=True) }}"
+    haproxy_state: "{{ state | default('present') }}"
+
+- name: "Dispatch HAProxy state"
+  ansible.builtin.include_tasks: "state/{{ haproxy_state }}.yml"
