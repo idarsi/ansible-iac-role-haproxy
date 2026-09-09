@@ -1,0 +1,52 @@
+---
+- name: "Verify all_absent guardrails"
+  hosts: "all"
+  tasks:
+    - name: "Create unmanaged configuration content"
+      ansible.builtin.file:
+        path: "/etc/haproxy"
+        state: "directory"
+        mode: "0755"
+    - name: "Create unmanaged file"
+      ansible.builtin.copy:
+        content: "must survive cleanup\n"
+        dest: "/etc/haproxy/unmanaged.cfg"
+        mode: "0644"
+    - name: "Create a valid role marker"
+      ansible.builtin.copy:
+        content: "role_managed_configuration=true\n"
+        dest: "/etc/haproxy/.idarsi-managed"
+        owner: "root"
+        group: "root"
+        mode: "0600"
+    - name: "Reject cleanup with unmanaged content"
+      block:
+        - name: "Run cleanup with unmanaged content"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "all_absent"
+            iac_blueprint:
+              haproxy: {}
+      rescue:
+        - name: "Record unmanaged-content guardrail failure"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-unmanaged-failure"
+            mode: "0600"
+    - name: "Reject unsafe cleanup path"
+      block:
+        - name: "Run unsafe cleanup path"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "all_absent"
+            haproxy_config_directory: "/"
+            iac_blueprint:
+              haproxy: {}
+      rescue:
+        - name: "Record path guardrail failure"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-path-failure"
+            mode: "0600"

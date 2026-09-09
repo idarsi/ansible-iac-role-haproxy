@@ -1,6 +1,8 @@
 ---
 galaxy_info:
   author: "Idarsi"
+  namespace: "idarsi"
+  role_name: "haproxy"
   description: "Safe single-instance HAProxy role for RHEL and Rocky Linux 9 and 10"
   license: "MIT"
   min_ansible_version: "2.15"
