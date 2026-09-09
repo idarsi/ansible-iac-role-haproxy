@@ -1,12 +1,21 @@
 > **Maturity State: Beta**<br>
 > **RC Readiness: 69%**
 
-# HAProxy Ansible Role
+ANSIBLE-IAC-ROLE-HAPROXY
+========================
+**COPYRIGHT** 2026 ^(ida|arsi)$ collective  
+**LICENSE** MIT License [LICENSE](LICENSE)  
+**AUTHORS**
+- Arsi Atomi <arsi@atomi.sh>  
+
+Overview
+--------
 
 Idarsi-style role for one HAProxy instance on RHEL/Rocky Linux 9 and 10. The
 public API is `iac_blueprint.haproxy`; inventory is validated before mutation.
 
-## Quick start
+Quick start
+-----------
 
 See `docs/inventory-minimal.yml` and `docs/inventory-basic.yml`.
 
@@ -29,7 +38,8 @@ iac_blueprint:
 An empty mapping is a valid minimal blueprint and produces a secure empty
 configuration.
 
-## Schema and states
+Schema and states
+-----------------
 
 The `iac_blueprint.haproxy` mapping accepts `global`, `defaults`, `frontends`,
 `backends`, and `stats`. Defaults are merged into an internal model before
@@ -43,7 +53,8 @@ mutation-free. Present/install/update install and start HAProxy. Uninstall and
 absent remove the package. `all_absent` additionally removes only the
 role-marked configuration directory.
 
-## Safety and limitations
+Safety and limitations
+----------------------
 
 Frontends, backends, ports, modes, references, duplicate names, and stats
 binds are validated. Stats are restricted to loopback. Certificate fields are
