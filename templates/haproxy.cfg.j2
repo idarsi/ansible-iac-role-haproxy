@@ -1,4 +1,4 @@
-{% set h = haproxy_blueprint %}
+{% set h = haproxy_model %}
 global
 {% for key, value in h.global.items() %}
   {{ key | replace('_', ' ') }}{% if value is sequence and value is not string %} {{ value | join(' ') }}{% else %} {{ value }}{% endif %}{{ '\n' }}

@@ -1,0 +1,39 @@
+---
+- name: "Validate HAProxy state type and value"
+  ansible.builtin.assert:
+    that:
+      - "state | default('present') is string"
+      - "(state | default('present')) in ['validate', 'install', 'update', 'uninstall', 'present', 'absent', 'all_absent', 'started', 'stopped', 'restarted']"
+    fail_msg: "State must be one of validate, install, update, uninstall, present, absent, all_absent, started, stopped, or restarted."
+
+- name: "Reject unknown HAProxy blueprint keys"
+  ansible.builtin.assert:
+    that:
+      - >-
+        (iac_blueprint.haproxy.keys() |
+        difference(['global', 'defaults', 'frontends', 'backends', 'stats']) |
+        list | length) == 0
+    fail_msg: "Unknown iac_blueprint.haproxy key; use global, defaults, frontends, backends, or stats."
+
+- name: "Validate HAProxy managed paths before mutation"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_config_directory is string and haproxy_config_directory.startswith('/')"
+      - "haproxy_config_path is string and haproxy_config_path.startswith('/')"
+      - "haproxy_managed_marker is string and haproxy_managed_marker.startswith('/')"
+      - "haproxy_config_directory not in ['/', '/etc', '/usr', '/var', '/home', '/root']"
+      - "haproxy_managed_marker == haproxy_config_directory ~ '/.idarsi-managed'"
+      - "haproxy_config_path.startswith(haproxy_config_directory ~ '/')"
+      - "'..' not in haproxy_config_directory.split('/')"
+      - "'..' not in haproxy_config_path.split('/')"
+    fail_msg: "HAProxy managed paths must be absolute, canonical child paths; destructive cleanup refuses system parent paths."
+
+- name: "Validate HAProxy blueprint section types before normalization"
+  ansible.builtin.assert:
+    that:
+      - "iac_blueprint.haproxy.global | default({}) is mapping"
+      - "iac_blueprint.haproxy.defaults | default({}) is mapping"
+      - "iac_blueprint.haproxy.frontends | default([]) is sequence and iac_blueprint.haproxy.frontends | default([]) is not string"
+      - "iac_blueprint.haproxy.backends | default([]) is sequence and iac_blueprint.haproxy.backends | default([]) is not string"
+      - "iac_blueprint.haproxy.stats | default({}) is mapping"
+    fail_msg: "HAProxy global, defaults, and stats must be mappings; frontends and backends must be lists."

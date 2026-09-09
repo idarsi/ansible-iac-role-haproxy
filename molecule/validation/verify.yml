@@ -2,6 +2,37 @@
 - name: "Verify validation"
   hosts: "all"
   tasks:
-    - name: "Assert validation host remains usable"
+    - name: "Check that validation did not create managed files"
+      ansible.builtin.stat:
+        path: "{{ validation_path }}"
+      loop:
+        - "/etc/haproxy/haproxy.cfg"
+        - "/etc/haproxy/.idarsi-managed"
+      loop_control:
+        loop_var: "validation_path"
+      register: validation_paths
+
+    - name: "Assert validation is mutation-free"
       ansible.builtin.assert:
-        that: true
+        that:
+          - "validation_paths.results | map(attribute='stat.exists') | select('equalto', true) | list | length == 0"
+
+    - name: "Reject an unknown blueprint key"
+      block:
+        - name: "Run role with invalid inventory"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                unsupported_option: true
+      rescue:
+        - name: "Assert actionable unknown-key failure"
+          ansible.builtin.assert:
+            that:
+              - "'Unknown iac_blueprint.haproxy key' in ansible_failed_result.msg"
+      always:
+        - name: "Require invalid inventory to fail"
+          ansible.builtin.assert:
+            that: "ansible_failed_result is defined"

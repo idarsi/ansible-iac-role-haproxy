@@ -1,0 +1,23 @@
+---
+- name: "Verify cleanup guardrails"
+  hosts: "all"
+  tasks:
+    - name: "Check unmanaged content remains"
+      ansible.builtin.stat:
+        path: "/etc/haproxy/unmanaged.cfg"
+      register: guardrail_unmanaged_file
+    - name: "Verify guardrails failed before cleanup"
+      ansible.builtin.assert:
+        that:
+          - "guardrail_unmanaged_file.stat.exists"
+    - name: "Check guardrail failure sentinels"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "/tmp/guardrail-unmanaged-failure"
+        - "/tmp/guardrail-path-failure"
+      register: guardrail_sentinels
+    - name: "Verify guardrails rejected unsafe operations"
+      ansible.builtin.assert:
+        that:
+          - "guardrail_sentinels.results | map(attribute='stat.exists') | select('equalto', true) | list | length == 2"

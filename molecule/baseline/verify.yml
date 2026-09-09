@@ -7,7 +7,12 @@
         src: "/etc/haproxy/haproxy.cfg"
       register: haproxy_config
     - name: "Validate HAProxy configuration"
-      ansible.builtin.command: "/usr/sbin/haproxy -c -f /etc/haproxy/haproxy.cfg"
+      ansible.builtin.command:
+        argv:
+          - "/usr/sbin/haproxy"
+          - "-c"
+          - "-f"
+          - "/etc/haproxy/haproxy.cfg"
       changed_when: false
     - name: "Gather service facts"
       ansible.builtin.service_facts:
@@ -30,3 +35,5 @@
           - "haproxy_managed_files.results[0].stat.mode == '0644'"
           - "haproxy_managed_files.results[1].stat.pw_name == 'root'"
           - "haproxy_managed_files.results[1].stat.mode == '0600'"
+          - "ansible_facts.services['haproxy.service'].state == 'running'"
+          - "ansible_facts.services['haproxy.service'].status == 'enabled'"

@@ -28,6 +28,21 @@
       - "(haproxy_marker_content.content | b64decode) == 'role_managed_configuration=true\\n'"
     fail_msg: "Refusing all_absent: the configuration directory or marker is not a safe role-managed path."
 
+- name: "Inspect cleanup scope before destructive operations"
+  ansible.builtin.find:
+    paths: "{{ haproxy_config_directory }}"
+    recurse: false
+    file_type: "any"
+  register: haproxy_cleanup_scope
+
+- name: "Refuse unmanaged all_absent content"
+  ansible.builtin.assert:
+    that:
+      - >-
+        (haproxy_cleanup_scope.files | map(attribute='path') | list |
+        difference([haproxy_config_path, haproxy_managed_marker]) | list | length) == 0
+    fail_msg: "Refusing all_absent: the configuration directory contains unmanaged content."
+
 - name: "Reuse uninstall state"
   ansible.builtin.include_tasks: "state/uninstall.yml"
 

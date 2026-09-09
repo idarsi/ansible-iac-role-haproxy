@@ -22,13 +22,16 @@
       - "iac_blueprint.haproxy is mapping"
     fail_msg: "Define iac_blueprint.haproxy as a mapping."
 
-- name: "Validate HAProxy inventory"
-  ansible.builtin.include_tasks: "validate/validate_inventory.yml"
+- name: "Run HAProxy root, type, and path preflight"
+  ansible.builtin.include_tasks: "validate/validate_preflight.yml"
 
 - name: "Normalize HAProxy blueprint"
   ansible.builtin.set_fact:
-    haproxy_blueprint: "{{ haproxy_default_blueprint | combine(iac_blueprint.haproxy, recursive=True) }}"
+    haproxy_model: "{{ haproxy_default_blueprint | combine(iac_blueprint.haproxy, recursive=True) }}"
     haproxy_state: "{{ state | default('present') }}"
+
+- name: "Validate normalized HAProxy inventory"
+  ansible.builtin.include_tasks: "validate/validate_inventory.yml"
 
 - name: "Dispatch HAProxy state"
   ansible.builtin.include_tasks: "state/{{ haproxy_state }}.yml"

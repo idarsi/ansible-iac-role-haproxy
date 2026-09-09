@@ -7,7 +7,7 @@ do not add implicit firewall changes or certificate-content copying.
 Use the shared test environment and Podman:
 
 ```bash
-export PATH="/home/arsi/.local/share/venvs/idarsi-ansible-testing/bin:$PATH"
+export PATH="<shared-ansible-testing-venv>/bin:$PATH"
 ansible-playbook --syntax-check -i docs/inventory-minimal.yml docs/playbook-example.yml
 ansible-lint --profile production
 ```
