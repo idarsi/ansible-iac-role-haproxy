@@ -2,3 +2,5 @@ ansible.cfg
 .ansible/
 .ansible_async/
 .ansible-lint
+__pycache__/
+*.py[cod]

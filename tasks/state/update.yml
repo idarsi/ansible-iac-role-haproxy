@@ -1,3 +1,26 @@
 ---
-- name: "Reuse present state"
+- name: "Upgrade HAProxy package"  # noqa package-latest
+  ansible.builtin.package:
+    name: "{{ haproxy_package_name }}"
+    state: "latest"
+  register: haproxy_package_update
+
+- name: "Converge updated HAProxy configuration"
   ansible.builtin.include_tasks: "state/present.yml"
+  vars:
+    haproxy_update_package_changed: "{{ haproxy_package_update is changed }}"
+
+- name: "Validate the rendered HAProxy configuration with the upgraded binary"
+  ansible.builtin.command:
+    argv:
+      - "{{ haproxy_binary_path }}"
+      - "-c"
+      - "-f"
+      - "{{ haproxy_config_path }}"
+  changed_when: false
+
+- name: "Restart HAProxy after a package update"  # noqa no-handler
+  ansible.builtin.service:
+    name: "{{ haproxy_service_name }}"
+    state: "restarted"
+  when: haproxy_package_update is changed

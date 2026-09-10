@@ -33,5 +33,16 @@
 - name: "Validate normalized HAProxy inventory"
   ansible.builtin.include_tasks: "validate/validate_inventory.yml"
 
+- name: "Validate managed paths before host-state mutation"
+  ansible.builtin.include_tasks: "validate/validate_paths.yml"
+  when: haproxy_state != 'validate'
+
+- name: "Validate TLS trust material on the host"
+  ansible.builtin.include_tasks: "validate/validate_host_trust.yml"
+  # Host trust is needed only while installing or rendering HAProxy. Service
+  # control and removal states must remain usable when unrelated CA material
+  # has already been removed or is temporarily unavailable.
+  when: haproxy_state in ['install', 'present', 'update']
+
 - name: "Dispatch HAProxy state"
   ansible.builtin.include_tasks: "state/{{ haproxy_state }}.yml"

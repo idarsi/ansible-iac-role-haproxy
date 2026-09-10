@@ -4,8 +4,12 @@ dependency:
 driver:
   name: "podman"
 platforms:
-  - name: "rocky9"
+  - name: "rocky9-update"
     image: "quay.io/rockylinux/rockylinux@sha256:0a384e1e9c7562251c9e2fdc4843b3ea21118e606dabfbe87d41f842f6f006ec"
+    command: "/sbin/init"
+    privileged: true
+    volumes:
+      - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
     pre_build_image: true
 provisioner:
   name: "ansible"
@@ -13,3 +17,11 @@ provisioner:
     ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/.."
 verifier:
   name: "ansible"
+scenario:
+  test_sequence:
+    - "dependency"
+    - "create"
+    - "converge"
+    - "idempotence"
+    - "verify"
+    - "destroy"

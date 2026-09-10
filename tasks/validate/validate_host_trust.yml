@@ -1,0 +1,257 @@
+---
+- name: "Inspect configured global TLS CA file"
+  ansible.builtin.stat:
+    path: "{{ haproxy_model.security.backend_tls_ca_file }}"
+    follow: false
+  register: haproxy_tls_ca_file_stat
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_file | length > 0"
+
+- name: "Resolve configured global TLS CA file canonically"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/realpath"
+      - "-m"
+      - "--"
+      - "{{ haproxy_model.security.backend_tls_ca_file }}"
+  register: haproxy_tls_ca_file_canonical
+  changed_when: false
+  check_mode: false
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_file | length > 0"
+
+- name: "Reject symlink parent components and non-canonical global TLS CA file"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_tls_ca_file_canonical.rc == 0"
+      - "haproxy_tls_ca_file_canonical.stdout == haproxy_model.security.backend_tls_ca_file"
+    fail_msg: >-
+      Refusing HAProxy TLS trust material: the global CA file and all parent
+      components must be canonical, non-symlink paths.
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_file | length > 0"
+
+- name: "Require a secure readable global TLS CA file"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_tls_ca_file_stat.stat.exists | default(false)"
+      - "haproxy_tls_ca_file_stat.stat.isreg | default(false)"
+      - "not haproxy_tls_ca_file_stat.stat.islnk | default(false)"
+      - "haproxy_tls_ca_file_stat.stat.readable | default(false)"
+      - "haproxy_tls_ca_file_stat.stat.uid | default(-1) == 0"
+      - "haproxy_tls_ca_file_stat.stat.gid | default(-1) == 0"
+      - "(haproxy_tls_ca_file_stat.stat.mode | default('000'))[-3] in ['4', '5', '6', '7']"
+      - "(haproxy_tls_ca_file_stat.stat.mode | default('000'))[-2] not in ['2', '3', '6', '7']"
+      - "(haproxy_tls_ca_file_stat.stat.mode | default('000'))[-1] not in ['2', '3', '6', '7']"
+    fail_msg: >-
+      Secure HAProxy backend TLS requires global CA file
+      '{{ haproxy_model.security.backend_tls_ca_file }}' to be a root-owned,
+      readable, regular, non-symlink file that is not group/world writable.
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_file | length > 0"
+
+- name: "List canonical global TLS CA file parent components"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/python3"
+      - "-c"
+      - |
+        import os, sys
+        path = os.path.dirname(os.path.abspath(sys.argv[1]))
+        parents = []
+        while True:
+            parents.append(path)
+            if path == '/':
+                break
+            path = os.path.dirname(path)
+        print('\n'.join(parents))
+      - "{{ haproxy_tls_ca_file_canonical.stdout }}"
+  register: haproxy_tls_ca_file_parent_paths
+  changed_when: false
+  check_mode: false
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_file | length > 0"
+
+- name: "Inspect canonical global TLS CA file parent components"
+  ansible.builtin.stat:
+    path: "{{ haproxy_tls_ca_file_parent_path }}"
+    follow: false
+  loop: "{{ haproxy_tls_ca_file_parent_paths.stdout_lines | default([]) }}"
+  loop_control:
+    loop_var: "haproxy_tls_ca_file_parent_path"
+  register: haproxy_tls_ca_file_parent_stats
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_file | length > 0"
+
+- name: "Require secure canonical global TLS CA file parents"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_tls_ca_file_parent_result.stat.exists"
+      - "haproxy_tls_ca_file_parent_result.stat.isdir"
+      - "not haproxy_tls_ca_file_parent_result.stat.islnk | default(false)"
+      - "haproxy_tls_ca_file_parent_result.stat.uid | default(-1) == 0"
+      - "haproxy_tls_ca_file_parent_result.stat.gid | default(-1) == 0"
+      - "(haproxy_tls_ca_file_parent_result.stat.mode | default('000'))[-2] not in ['2', '3', '6', '7']"
+      - "(haproxy_tls_ca_file_parent_result.stat.mode | default('000'))[-1] not in ['2', '3', '6', '7']"
+    fail_msg: >-
+      Refusing HAProxy TLS trust material: every parent directory of global CA
+      file '{{ haproxy_model.security.backend_tls_ca_file }}' must be a
+      root-owned, non-symlink directory that is not group/world writable.
+  loop: "{{ haproxy_tls_ca_file_parent_stats.results | default([]) }}"
+  loop_control:
+    loop_var: "haproxy_tls_ca_file_parent_result"
+  when:
+    - "not haproxy_tls_ca_file_parent_result.skipped | default(false)"
+
+- name: "Inspect configured global TLS CA directory"
+  ansible.builtin.stat:
+    path: "{{ haproxy_model.security.backend_tls_ca_directory }}"
+    follow: false
+  register: haproxy_tls_ca_directory_stat
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_directory | length > 0"
+
+- name: "Resolve configured global TLS CA directory canonically"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/realpath"
+      - "-m"
+      - "--"
+      - "{{ haproxy_model.security.backend_tls_ca_directory }}"
+  register: haproxy_tls_ca_directory_canonical
+  changed_when: false
+  check_mode: false
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_directory | length > 0"
+
+- name: "Reject symlink parent components and non-canonical global TLS CA directory"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_tls_ca_directory_canonical.rc == 0"
+      - "haproxy_tls_ca_directory_canonical.stdout == haproxy_model.security.backend_tls_ca_directory"
+    fail_msg: >-
+      Refusing HAProxy TLS trust material: the global CA directory and all
+      parent components must be canonical, non-symlink paths.
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_directory | length > 0"
+
+- name: "Require a secure readable global TLS CA directory"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_tls_ca_directory_stat.stat.exists | default(false)"
+      - "haproxy_tls_ca_directory_stat.stat.isdir | default(false)"
+      - "not haproxy_tls_ca_directory_stat.stat.islnk | default(false)"
+      - "haproxy_tls_ca_directory_stat.stat.readable | default(false)"
+      - "haproxy_tls_ca_directory_stat.stat.uid | default(-1) == 0"
+      - "haproxy_tls_ca_directory_stat.stat.gid | default(-1) == 0"
+      - "(haproxy_tls_ca_directory_stat.stat.mode | default('000'))[-3] in ['5', '7']"
+      - "(haproxy_tls_ca_directory_stat.stat.mode | default('000'))[-2] not in ['2', '3', '6', '7']"
+      - "(haproxy_tls_ca_directory_stat.stat.mode | default('000'))[-1] not in ['2', '3', '6', '7']"
+    fail_msg: >-
+      Secure HAProxy backend TLS requires CA directory
+      '{{ haproxy_model.security.backend_tls_ca_directory }}' to be a root-owned,
+      readable, non-symlink directory that is not group/world writable.
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_directory | length > 0"
+
+- name: "List canonical global TLS CA directory parent components"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/python3"
+      - "-c"
+      - |
+        import os, sys
+        path = os.path.abspath(sys.argv[1])
+        parents = []
+        while True:
+            parents.append(path)
+            if path == '/':
+                break
+            path = os.path.dirname(path)
+        print('\n'.join(parents))
+      - "{{ haproxy_tls_ca_directory_canonical.stdout }}"
+  register: haproxy_tls_ca_directory_parent_paths
+  changed_when: false
+  check_mode: false
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_directory | length > 0"
+
+- name: "Inspect canonical global TLS CA directory parent components"
+  ansible.builtin.stat:
+    path: "{{ haproxy_tls_ca_directory_parent_path }}"
+    follow: false
+  loop: "{{ haproxy_tls_ca_directory_parent_paths.stdout_lines | default([]) }}"
+  loop_control:
+    loop_var: "haproxy_tls_ca_directory_parent_path"
+  register: haproxy_tls_ca_directory_parent_stats
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_directory | length > 0"
+
+- name: "Require secure canonical global TLS CA directory parents"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_tls_ca_directory_parent_result.stat.exists"
+      - "haproxy_tls_ca_directory_parent_result.stat.isdir"
+      - "not haproxy_tls_ca_directory_parent_result.stat.islnk | default(false)"
+      - "haproxy_tls_ca_directory_parent_result.stat.uid | default(-1) == 0"
+      - "haproxy_tls_ca_directory_parent_result.stat.gid | default(-1) == 0"
+      - "(haproxy_tls_ca_directory_parent_result.stat.mode | default('000'))[-2] not in ['2', '3', '6', '7']"
+      - "(haproxy_tls_ca_directory_parent_result.stat.mode | default('000'))[-1] not in ['2', '3', '6', '7']"
+    fail_msg: >-
+      Refusing HAProxy TLS trust material: every parent directory of global CA
+      directory '{{ haproxy_model.security.backend_tls_ca_directory }}' must be
+      a root-owned, non-symlink directory that is not group/world writable.
+  loop: "{{ haproxy_tls_ca_directory_parent_stats.results | default([]) }}"
+  loop_control:
+    loop_var: "haproxy_tls_ca_directory_parent_result"
+  when:
+    - "not haproxy_tls_ca_directory_parent_result.skipped | default(false)"
+
+- name: "Inspect per-server TLS CA files under the configured trust root"
+  ansible.builtin.stat:
+    path: "{{ haproxy_model.security.backend_tls_ca_directory }}/{{ haproxy_server_record.1.ca_file }}"
+    follow: false
+  register: haproxy_tls_server_ca_stats
+  loop: "{{ query('ansible.builtin.subelements', haproxy_model.backends, 'servers') }}"
+  loop_control:
+    loop_var: "haproxy_server_record"
+  when:
+    - "haproxy_model.security.backend_tls_verify"
+    - "haproxy_model.security.backend_tls_ca_directory | length > 0"
+    - "haproxy_server_record.1.ssl | default(false)"
+
+- name: "Require secure readable per-server TLS CA files"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_tls_server_ca_result.stat.exists"
+      - "haproxy_tls_server_ca_result.stat.isreg"
+      - "not haproxy_tls_server_ca_result.stat.islnk | default(false)"
+      - "haproxy_tls_server_ca_result.stat.readable | default(false)"
+      - "haproxy_tls_server_ca_result.stat.uid | default(-1) == 0"
+      - "haproxy_tls_server_ca_result.stat.gid | default(-1) == 0"
+      - "(haproxy_tls_server_ca_result.stat.mode | default('000'))[-3] in ['4', '5', '6', '7']"
+      - "(haproxy_tls_server_ca_result.stat.mode | default('000'))[-2] not in ['2', '3', '6', '7']"
+      - "(haproxy_tls_server_ca_result.stat.mode | default('000'))[-1] not in ['2', '3', '6', '7']"
+    fail_msg: >-
+      TLS server '{{ haproxy_tls_server_ca_result.haproxy_server_record.1.name }}'
+      requires a root-owned, readable regular CA file
+      '{{ haproxy_tls_server_ca_result.haproxy_server_record.1.ca_file }}' under
+      the configured CA directory; symlinks and group/world-writable trust files
+      are refused.
+  loop: "{{ haproxy_tls_server_ca_stats.results | default([]) }}"
+  loop_control:
+    loop_var: "haproxy_tls_server_ca_result"
+  when:
+    - "not haproxy_tls_server_ca_result.skipped | default(false)"

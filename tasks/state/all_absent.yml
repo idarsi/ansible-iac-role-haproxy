@@ -28,11 +28,24 @@
       - "(haproxy_marker_content.content | b64decode) == 'role_managed_configuration=true\\n'"
     fail_msg: "Refusing all_absent: the configuration directory or marker is not a safe role-managed path."
 
+- name: "Inspect managed configuration file"
+  ansible.builtin.stat:
+    path: "{{ haproxy_config_path }}"
+    follow: false
+  register: haproxy_config_file
+
+- name: "Refuse wrong-type or symlink managed configuration"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_config_file.stat.exists and haproxy_config_file.stat.isreg and not haproxy_config_file.stat.islnk"
+    fail_msg: "Refusing all_absent: the managed configuration target is a symlink or has the wrong file type."
+
 - name: "Inspect cleanup scope before destructive operations"
   ansible.builtin.find:
     paths: "{{ haproxy_config_directory }}"
     recurse: false
     file_type: "any"
+    hidden: true
   register: haproxy_cleanup_scope
 
 - name: "Refuse unmanaged all_absent content"

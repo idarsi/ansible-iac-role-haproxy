@@ -1,7 +1,8 @@
 ---
-- name: "Converge HAProxy"
+- name: "Update HAProxy and converge configuration"
   hosts: "all"
   vars:
+    state: "update"
     iac_blueprint:
       haproxy:
         frontends:
@@ -12,16 +13,8 @@
         backends:
           - name: "apps"
             servers:
-              - name: "app1"
-                address: "127.0.0.1"
-                port: 9000
-                ssl: true
-                verifyhost: "app1.example.test"
               - name: "app6"
                 address: "2001:db8::1"
                 port: 9001
-        security:
-          backend_tls_verify: false
-    haproxy_allow_insecure_backend_tls: true
   roles:
     - role: "ansible-iac-role-haproxy"

@@ -30,6 +30,10 @@
         that:
           - "'frontend web' in (haproxy_config.content | b64decode)"
           - "'backend apps' in (haproxy_config.content | b64decode)"
+          - "'server app6 [2001:db8::1]:9001 check' in (haproxy_config.content | b64decode)"
+          - "'user haproxy' in (haproxy_config.content | b64decode)"
+          - "'group haproxy' in (haproxy_config.content | b64decode)"
+          - "'ssl verify none verifyhost app1.example.test' in (haproxy_config.content | b64decode)"
           - "'haproxy.service' in ansible_facts.services"
           - "haproxy_managed_files.results[0].stat.pw_name == 'root'"
           - "haproxy_managed_files.results[0].stat.mode == '0644'"

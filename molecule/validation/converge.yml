@@ -7,3 +7,406 @@
       haproxy: {}
   roles:
     - role: "ansible-iac-role-haproxy"
+
+- name: "Check validation guardrails"
+  hosts: "all"
+  vars:
+    validation_security_message: >-
+      HAProxy security only supports backend_tls_verify=true unless the explicit insecure opt-in
+      haproxy_allow_insecure_backend_tls=true is set.
+    validation_identity_message: >-
+      HAProxy global privilege-changing directives (user, group, uid, gid, setuid, setgid, and chroot)
+      are not supported; the package-provided haproxy identity is enforced by this role; the privilege-drop
+      identity cannot be overridden.
+    validation_mode_identity_message: >-
+      HAProxy modes must be 'http' or 'tcp', and the privilege-drop identity must be the package-provided
+      haproxy user and group.
+  tasks:
+    - name: "Accept secure TLS with a CA directory and server bundle"
+      ansible.builtin.include_role:
+        name: "ansible-iac-role-haproxy"
+      vars:
+        state: "validate"
+        iac_blueprint:
+          haproxy:
+            security:
+              backend_tls_ca_directory: "/etc/pki/ca-trust/source/anchors"
+            backends:
+              - name: "secure_apps"
+                servers:
+                  - name: "app1"
+                    address: "app1.example.test"
+                    port: 443
+                    ssl: true
+                    ca_file: "internal-ca.pem"
+                    verifyhost: "app1.example.test"
+    - name: "Reject newline in a backend address"
+      block:
+        - name: "Run invalid address validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                backends:
+                  - name: "apps"
+                    servers:
+                      - name: "bad"
+                        address: "backend.example\nignore"
+                        port: 443
+      rescue:
+        - name: "Record address validation guardrail"
+          ansible.builtin.set_fact:
+            address_guardrail_passed: true
+        - name: "Assert actionable address validation failure"
+          ansible.builtin.assert:
+            that:
+              - >-
+                "address '" in (ansible_failed_task.args.fail_msg | default(""))
+              - >-
+                "IPv6 values are parsed as real literals" in
+                (ansible_failed_task.args.fail_msg | default(""))
+    - name: "Reject unknown nested security setting"
+      block:
+        - name: "Run invalid security validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                security:
+                  unexpected: true
+      rescue:
+        - name: "Record security validation guardrail"
+          ansible.builtin.set_fact:
+            security_guardrail_passed: true
+        - name: "Assert actionable security validation failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_security_message"
+    - name: "Reject unsupported colon-bearing backend address"
+      block:
+        - name: "Run invalid IPv6 address validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                backends:
+                  - name: "apps"
+                    servers:
+                      - name: "bad"
+                        address: "backend:v6"
+                        port: 443
+      rescue:
+        - name: "Record invalid address guardrail"
+          ansible.builtin.set_fact:
+            invalid_address_guardrail_passed: true
+        - name: "Assert unsupported address validation failure"
+          ansible.builtin.assert:
+            that:
+              - "\"backend\" in ansible_failed_task.args.fail_msg"
+              - "\"v6\" in ansible_failed_task.args.fail_msg"
+              - "\"invalid\" in ansible_failed_task.args.fail_msg"
+              - "ansible_failed_task.args.fail_msg is search('IPv6 values are parsed as real literals')"
+              - "ansible_failed_task.args.fail_msg is search('every server needs a unique name and port')"
+    - name: "Reject malformed IPv4 backend address"
+      block:
+        - name: "Run malformed IPv4 validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                backends:
+                  - name: "apps"
+                    servers:
+                      - name: "bad"
+                        address: "999.999.999.999"
+                        port: 443
+      rescue:
+        - name: "Record malformed IPv4 validation guardrail"
+          ansible.builtin.set_fact:
+            malformed_ipv4_guardrail_passed: true
+        - name: "Assert malformed IPv4 validation failure is actionable"
+          ansible.builtin.assert:
+            that:
+              - "ansible_failed_task.name == 'Validate HAProxy server values'"
+              - "ansible_failed_result is failed"
+              - >-
+                "999.999.999.999" in (ansible_failed_task.args.fail_msg | default(""))
+                or "invalid" in (ansible_failed_task.args.fail_msg | default(""))
+    - name: "Reject malformed IPv6 backend address"
+      block:
+        - name: "Run malformed IPv6 validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                backends:
+                  - name: "apps"
+                    servers:
+                      - name: "bad"
+                        address: "::::"
+                        port: 443
+      rescue:
+        - name: "Record malformed IPv6 validation guardrail"
+          ansible.builtin.set_fact:
+            malformed_ipv6_guardrail_passed: true
+        - name: "Assert malformed IPv6 validation failure is actionable"
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result is failed
+              - >-
+                "Each backend server needs a valid hostname, IPv4 address, or IPv6 literal" in
+                (ansible_failed_result.results[0].msg | default(""))
+    - name: "Reject privileged HAProxy identity"
+      block:
+        - name: "Run privileged identity validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  user: "root"
+      rescue:
+        - name: "Record privileged identity guardrail"
+          ansible.builtin.set_fact:
+            identity_guardrail_passed: true
+        - name: "Assert actionable privilege identity failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_identity_message"
+    - name: "Reject missing or arbitrary HAProxy identity"
+      block:
+        - name: "Run missing identity validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  user: "account_that_must_not_be_used"
+      rescue:
+        - name: "Record missing identity guardrail"
+          ansible.builtin.set_fact:
+            missing_identity_guardrail_passed: true
+        - name: "Assert actionable arbitrary identity failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_identity_message"
+    - name: "Reject numeric HAProxy privilege identity override"
+      block:
+        - name: "Run numeric identity validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  uid: 0
+      rescue:
+        - name: "Record numeric identity guardrail"
+          ansible.builtin.set_fact:
+            numeric_identity_guardrail_passed: true
+        - name: "Assert actionable numeric identity failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_identity_message"
+    - name: "Reject group HAProxy privilege identity override"
+      block:
+        - name: "Run group identity validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  group: "root"
+      rescue:
+        - name: "Record group identity guardrail"
+          ansible.builtin.set_fact:
+            group_identity_guardrail_passed: true
+        - name: "Assert actionable group identity failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_identity_message"
+    - name: "Reject gid HAProxy privilege identity override"
+      block:
+        - name: "Run gid identity validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  gid: 0
+      rescue:
+        - name: "Record gid identity guardrail"
+          ansible.builtin.set_fact:
+            gid_identity_guardrail_passed: true
+        - name: "Assert actionable gid identity failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_identity_message"
+    - name: "Reject setuid HAProxy privilege identity override"
+      block:
+        - name: "Run setuid identity validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  setuid: true
+      rescue:
+        - name: "Record setuid identity guardrail"
+          ansible.builtin.set_fact:
+            setuid_identity_guardrail_passed: true
+        - name: "Assert actionable setuid identity failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_identity_message"
+    - name: "Reject setgid HAProxy privilege identity override"
+      block:
+        - name: "Run setgid identity validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  setgid: true
+      rescue:
+        - name: "Record setgid identity guardrail"
+          ansible.builtin.set_fact:
+            setgid_identity_guardrail_passed: true
+        - name: "Assert actionable setgid identity failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_identity_message"
+    - name: "Reject chroot HAProxy privilege identity override"
+      block:
+        - name: "Run chroot identity validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  chroot: "/var/empty"
+      rescue:
+        - name: "Record chroot identity guardrail"
+          ansible.builtin.set_fact:
+            chroot_identity_guardrail_passed: true
+        - name: "Assert actionable chroot identity failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_identity_message"
+    - name: "Reject disabled TLS verification without explicit opt-in"
+      block:
+        - name: "Run insecure TLS validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                security:
+                  backend_tls_verify: false
+      rescue:
+        - name: "Record insecure TLS guardrail"
+          ansible.builtin.set_fact:
+            tls_guardrail_passed: true
+        - name: "Assert actionable TLS validation failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == validation_security_message"
+    - name: "Reject secure TLS without trust material"
+      block:
+        - name: "Run secure TLS without CA validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                backends:
+                  - name: "secure_apps"
+                    servers:
+                      - name: "app1"
+                        address: "app1.example.test"
+                        port: 443
+                        ssl: true
+                        verifyhost: "app1.example.test"
+      rescue:
+        - name: "Record secure TLS trust-material guardrail"
+          ansible.builtin.set_fact:
+            secure_tls_trust_guardrail_passed: true
+        - name: "Assert secure TLS trust-material failure"
+          ansible.builtin.assert:
+            that:
+              - "'requires trust material' in (ansible_failed_task.args.fail_msg | default(''))"
+    - name: "Reject per-server CA traversal"
+      block:
+        - name: "Run per-server CA traversal validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                security:
+                  backend_tls_ca_directory: "/etc/pki/ca-trust/source/anchors"
+                backends:
+                  - name: "secure_apps"
+                    servers:
+                      - name: "app1"
+                        address: "app1.example.test"
+                        port: 443
+                        ssl: true
+                        ca_file: "../private.pem"
+                        verifyhost: "app1.example.test"
+      rescue:
+        - name: "Record per-server CA traversal guardrail"
+          ansible.builtin.set_fact:
+            ca_traversal_guardrail_passed: true
+        - name: "Assert per-server CA traversal is rejected"
+          ansible.builtin.assert:
+            that:
+              - "'trust material' in (ansible_failed_task.args.fail_msg | default(''))"
+    - name: "Verify validation guardrails"
+      ansible.builtin.assert:
+        that:
+          - "address_guardrail_passed | default(false)"
+          - "invalid_address_guardrail_passed | default(false)"
+          - "malformed_ipv4_guardrail_passed | default(false)"
+          - "malformed_ipv6_guardrail_passed | default(false)"
+          - "security_guardrail_passed | default(false)"
+          - "identity_guardrail_passed | default(false)"
+          - "missing_identity_guardrail_passed | default(false)"
+          - "numeric_identity_guardrail_passed | default(false)"
+          - "group_identity_guardrail_passed | default(false)"
+          - "gid_identity_guardrail_passed | default(false)"
+          - "setuid_identity_guardrail_passed | default(false)"
+          - "setgid_identity_guardrail_passed | default(false)"
+          - "chroot_identity_guardrail_passed | default(false)"
+          - "tls_guardrail_passed | default(false)"
+          - "secure_tls_trust_guardrail_passed | default(false)"
+          - "ca_traversal_guardrail_passed | default(false)"

@@ -1,0 +1,47 @@
+---
+- name: "Install HAProxy before lifecycle transition"
+  hosts: "all"
+  vars:
+    iac_blueprint:
+      haproxy:
+        frontends:
+          - name: "web"
+            bind: "127.0.0.1"
+            port: 8080
+            default_backend: "apps"
+        backends:
+          - name: "apps"
+            servers:
+              - name: "app1"
+                address: "127.0.0.1"
+                port: 9000
+  roles:
+    - role: "ansible-iac-role-haproxy"
+
+- name: "Stop HAProxy"
+  hosts: "all"
+  vars:
+    state: "stopped"
+    iac_blueprint:
+      haproxy: {}
+  roles:
+    - role: "ansible-iac-role-haproxy"
+
+- name: "Render changed configuration while service is inactive"
+  hosts: "all"
+  vars:
+    iac_blueprint:
+      haproxy:
+        frontends:
+          - name: "web"
+            bind: "127.0.0.1"
+            port: 8081
+            default_backend: "apps"
+        backends:
+          - name: "apps"
+            servers:
+              - name: "app1"
+                address: "127.0.0.1"
+                port: 9000
+  roles:
+    - role: "ansible-iac-role-haproxy"

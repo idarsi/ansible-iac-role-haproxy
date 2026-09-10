@@ -11,10 +11,13 @@ haproxy_binary_path: "/usr/sbin/haproxy"
 haproxy_config_path: "/etc/haproxy/haproxy.cfg"
 haproxy_config_directory: "/etc/haproxy"
 haproxy_managed_marker: "/etc/haproxy/.idarsi-managed"
+haproxy_allow_insecure_backend_tls: false
 
 haproxy_default_blueprint:
   global:
     maxconn: 2048
+    user: "haproxy"
+    group: "haproxy"
   defaults:
     mode: "http"
     timeout_connect: "5s"
@@ -27,3 +30,7 @@ haproxy_default_blueprint:
     bind: "127.0.0.1"
     port: 8404
     uri: "/stats"
+  security:
+    backend_tls_verify: true
+    backend_tls_ca_file: ""
+    backend_tls_ca_directory: ""

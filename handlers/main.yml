@@ -1,4 +1,10 @@
 ---
+- name: "Restart HAProxy after package update"
+  ansible.builtin.service:
+    name: "{{ haproxy_service_name }}"
+    state: "restarted"
+  listen: "restart haproxy after package update"
+
 - name: "Validate HAProxy configuration"
   ansible.builtin.command:
     argv:

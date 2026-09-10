@@ -1,7 +1,113 @@
 ---
 - name: "Verify all_absent guardrails"
   hosts: "all"
+  vars:
+    unmanaged_content_message: "Refusing all_absent: the configuration directory contains unmanaged content."
+    unsafe_cleanup_message: "HAProxy managed paths must be absolute, canonical child paths; destructive cleanup refuses system parent paths."
+    managed_target_message: "Refusing HAProxy operation: a managed target is a symlink or has the wrong file type."
+    managed_path_message: "Refusing HAProxy operation: managed paths or one of their parent components is a symlink or non-canonical path."
+    all_absent_target_message: "Refusing all_absent: the managed configuration target is a symlink or has the wrong file type."
+    ownership_message: "Refusing all_absent: the configuration directory or marker is not a safe role-managed path."
+    wrong_owner_message: >-
+      Secure HAProxy backend TLS requires global CA file
+      '/var/lib/haproxy-guardrails-ca/wrong-owner.pem' to be a root-owned,
+      readable, regular, non-symlink file that is not group/world writable.
+    wrong_type_message: >-
+      Secure HAProxy backend TLS requires global CA file
+      '/var/lib/haproxy-guardrails-ca/not-a-file' to be a root-owned, readable,
+      regular, non-symlink file that is not group/world writable.
+    writable_ca_parent_message: >-
+      Refusing HAProxy TLS trust material: every parent directory of global CA
+      directory '/var/lib/haproxy-guardrails-ca/writable/anchors' must be a
+      root-owned, non-symlink directory that is not group/world writable.
+    writable_ca_file_parent_message: >-
+      Refusing HAProxy TLS trust material: every parent directory of global CA
+      file '/var/lib/haproxy-guardrails-ca/file-writable/ca.pem' must be a
+      root-owned, non-symlink directory that is not group/world writable.
+    symlink_ca_file_parent_message: "Refusing HAProxy TLS trust material: the global CA file and all parent components must be canonical, non-symlink paths."
   tasks:
+    - name: "Create path guardrail fixtures"
+      block:
+        - name: "Create real path parents"
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: "directory"
+            mode: "0755"
+          loop:
+            - "/tmp/haproxy-guardrails-real"
+            - "/tmp/haproxy-guardrails-real/config"
+            - "/tmp/haproxy-guardrails-real/config/directory.cfg"
+
+        - name: "Create TLS trust fixtures"
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: "directory"
+            owner: "root"
+            group: "root"
+            mode: "0755"
+          loop:
+            - "/var/lib/haproxy-guardrails-ca"
+            - "/var/lib/haproxy-guardrails-ca/anchors"
+            - "/var/lib/haproxy-guardrails-ca/not-a-file"
+            - "/var/lib/haproxy-guardrails-ca/writable"
+            - "/var/lib/haproxy-guardrails-ca/writable/anchors"
+            - "/var/lib/haproxy-guardrails-ca/file-writable"
+        - name: "Create valid TLS trust fixture"
+          ansible.builtin.copy:
+            content: "not-a-real-but-readable-ca\n"
+            dest: "/var/lib/haproxy-guardrails-ca/anchors/ca.pem"
+            owner: "root"
+            group: "root"
+            mode: "0644"
+        - name: "Make a TLS CA parent group-writable"
+          ansible.builtin.file:
+            path: "/var/lib/haproxy-guardrails-ca/writable"
+            mode: "0775"
+        - name: "Make a global CA file parent group-writable"
+          ansible.builtin.file:
+            path: "/var/lib/haproxy-guardrails-ca/file-writable"
+            mode: "0775"
+        - name: "Create global CA file in writable parent"
+          ansible.builtin.copy:
+            content: "not-a-real-but-readable-ca\n"
+            dest: "/var/lib/haproxy-guardrails-ca/file-writable/ca.pem"
+            owner: "root"
+            group: "root"
+            mode: "0644"
+        - name: "Create wrong-owner TLS trust fixture"
+          ansible.builtin.copy:
+            content: "not-a-real-but-readable-ca\n"
+            dest: "/var/lib/haproxy-guardrails-ca/wrong-owner.pem"
+            owner: "nobody"
+            group: "nobody"
+            mode: "0644"
+        - name: "Create symlink TLS trust parent"
+          ansible.builtin.file:
+            src: "/var/lib/haproxy-guardrails-ca"
+            dest: "/var/lib/haproxy-guardrails-ca-parent-link"
+            state: "link"
+        - name: "Create symlink parent for global CA file"
+          ansible.builtin.file:
+            src: "/var/lib/haproxy-guardrails-ca"
+            dest: "/var/lib/haproxy-guardrails-ca-file-parent-link"
+            state: "link"
+        - name: "Create symlink parent"
+          ansible.builtin.file:
+            src: "/tmp/haproxy-guardrails-real"
+            dest: "/tmp/haproxy-guardrails-parent-link"
+            state: "link"
+        - name: "Create symlink managed target"
+          ansible.builtin.file:
+            src: "/tmp/haproxy-guardrails-real/target.cfg"
+            dest: "/tmp/haproxy-guardrails-real/config/symlink.cfg"
+            state: "link"
+            force: true
+        - name: "Create non-regular managed target"
+          ansible.builtin.file:
+            path: "/tmp/haproxy-guardrails-real/config/directory.cfg"
+            state: "directory"
+            mode: "0755"
+
     - name: "Create unmanaged configuration content"
       ansible.builtin.file:
         path: "/etc/haproxy"
@@ -12,10 +118,24 @@
         content: "must survive cleanup\n"
         dest: "/etc/haproxy/unmanaged.cfg"
         mode: "0644"
+    - name: "Create managed configuration fixture"
+      ansible.builtin.copy:
+        content: "global\n\n"
+        dest: "/etc/haproxy/haproxy.cfg"
+        owner: "root"
+        group: "root"
+        mode: "0644"
     - name: "Create a valid role marker"
       ansible.builtin.copy:
         content: "role_managed_configuration=true\n"
         dest: "/etc/haproxy/.idarsi-managed"
+        owner: "root"
+        group: "root"
+        mode: "0600"
+    - name: "Create a valid fixture role marker"
+      ansible.builtin.copy:
+        content: "role_managed_configuration=true\n"
+        dest: "/tmp/haproxy-guardrails-real/config/.idarsi-managed"
         owner: "root"
         group: "root"
         mode: "0600"
@@ -28,12 +148,218 @@
             state: "all_absent"
             iac_blueprint:
               haproxy: {}
+
       rescue:
         - name: "Record unmanaged-content guardrail failure"
           ansible.builtin.copy:
             content: "failed as expected\n"
             dest: "/tmp/guardrail-unmanaged-failure"
             mode: "0600"
+        - name: "Assert unmanaged-content failure"
+          ansible.builtin.assert:
+            that:
+              - "ansible_failed_result.msg == unmanaged_content_message"
+
+    - name: "Reject symlinked TLS CA parent"
+      block:
+        - name: "Run present with symlinked TLS CA parent"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "present"
+            iac_blueprint:
+              haproxy:
+                security:
+                  backend_tls_ca_directory: "/var/lib/haproxy-guardrails-ca-parent-link/anchors"
+                backends:
+                  - name: "secure_apps"
+                    servers:
+                      - name: "app1"
+                        address: "app1.example.test"
+                        port: 443
+                        ssl: true
+                        ca_file: "ca.pem"
+                        verifyhost: "app1.example.test"
+      rescue:
+        - name: "Record symlinked TLS CA parent guardrail"
+          block:
+            - name: "Write symlinked-parent failure sentinel"
+              ansible.builtin.copy:
+                content: "failed as expected\n"
+                dest: "/tmp/guardrail-tls-ca-parent-failure"
+                mode: "0600"
+        - name: "Assert symlinked TLS CA parent failure"
+          ansible.builtin.assert:
+            that:
+              - >-
+                (ansible_failed_task.args.fail_msg | default('')) ==
+                'Refusing HAProxy TLS trust material: the global CA directory and all parent components must be canonical, non-symlink paths.'
+
+    - name: "Reject wrong TLS CA ownership"
+      block:
+        - name: "Run present with wrong-owner TLS CA file"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "present"
+            iac_blueprint:
+              haproxy:
+                security:
+                  backend_tls_ca_file: "/var/lib/haproxy-guardrails-ca/wrong-owner.pem"
+                backends:
+                  - name: "secure_apps"
+                    servers:
+                      - name: "app1"
+                        address: "app1.example.test"
+                        port: 443
+                        ssl: true
+                        verifyhost: "app1.example.test"
+      rescue:
+        - name: "Record wrong TLS CA ownership guardrail"
+          block:
+            - name: "Write wrong-owner failure sentinel"
+              ansible.builtin.copy:
+                content: "failed as expected\n"
+                dest: "/tmp/guardrail-tls-ca-owner-failure"
+                mode: "0600"
+        - name: "Assert wrong TLS CA ownership failure"
+          ansible.builtin.assert:
+            that:
+              - >-
+                (ansible_failed_task.args.fail_msg | default('')) ==
+                wrong_owner_message
+
+    - name: "Reject writable TLS CA parent"
+      block:
+        - name: "Run present with writable TLS CA parent"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "present"
+            iac_blueprint:
+              haproxy:
+                security:
+                  backend_tls_ca_directory: "/var/lib/haproxy-guardrails-ca/writable/anchors"
+                backends:
+                  - name: "secure_apps"
+                    servers:
+                      - name: "app1"
+                        address: "app1.example.test"
+                        port: 443
+                        ssl: true
+                        ca_file: "ca.pem"
+                        verifyhost: "app1.example.test"
+      rescue:
+        - name: "Record writable TLS CA parent guardrail"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-tls-ca-writable-parent-failure"
+            mode: "0600"
+        - name: "Assert writable TLS CA parent failure"
+          ansible.builtin.assert:
+            that:
+              - >-
+                (ansible_failed_task.args.fail_msg | default('')) ==
+                writable_ca_parent_message
+
+    - name: "Reject wrong TLS CA type"
+      block:
+        - name: "Run present with directory as TLS CA file"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "present"
+            iac_blueprint:
+              haproxy:
+                security:
+                  backend_tls_ca_file: "/var/lib/haproxy-guardrails-ca/not-a-file"
+                backends:
+                  - name: "secure_apps"
+                    servers:
+                      - name: "app1"
+                        address: "app1.example.test"
+                        port: 443
+                        ssl: true
+                        verifyhost: "app1.example.test"
+      rescue:
+        - name: "Record wrong TLS CA type guardrail"
+          block:
+            - name: "Write wrong-type failure sentinel"
+              ansible.builtin.copy:
+                content: "failed as expected\n"
+                dest: "/tmp/guardrail-tls-ca-type-failure"
+                mode: "0600"
+        - name: "Assert wrong TLS CA type failure"
+          ansible.builtin.assert:
+            that:
+              - >-
+                (ansible_failed_task.args.fail_msg | default('')) ==
+                wrong_type_message
+
+    - name: "Reject writable parent of global TLS CA file"
+      block:
+        - name: "Run present with writable global TLS CA file parent"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "present"
+            iac_blueprint:
+              haproxy:
+                security:
+                  backend_tls_ca_file: "/var/lib/haproxy-guardrails-ca/file-writable/ca.pem"
+                backends:
+                  - name: "secure_apps"
+                    servers:
+                      - name: "app1"
+                        address: "app1.example.test"
+                        port: 443
+                        ssl: true
+                        verifyhost: "app1.example.test"
+      rescue:
+        - name: "Write writable global CA file parent sentinel"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-tls-ca-file-writable-parent-failure"
+            mode: "0600"
+        - name: "Assert writable global CA file parent failure"
+          ansible.builtin.assert:
+            that:
+              - >-
+                (ansible_failed_task.args.fail_msg | default('')) ==
+                writable_ca_file_parent_message
+
+    - name: "Reject symlinked parent of global TLS CA file"
+      block:
+        - name: "Run present with symlinked global TLS CA file parent"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "present"
+            iac_blueprint:
+              haproxy:
+                security:
+                  backend_tls_ca_file: "/var/lib/haproxy-guardrails-ca-file-parent-link/anchors/ca.pem"
+                backends:
+                  - name: "secure_apps"
+                    servers:
+                      - name: "app1"
+                        address: "app1.example.test"
+                        port: 443
+                        ssl: true
+                        verifyhost: "app1.example.test"
+      rescue:
+        - name: "Write symlinked global CA file parent sentinel"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-tls-ca-file-symlink-parent-failure"
+            mode: "0600"
+        - name: "Assert symlinked global CA file parent failure"
+          ansible.builtin.assert:
+            that:
+              - >-
+                (ansible_failed_task.args.fail_msg | default('')) ==
+                symlink_ca_file_parent_message
+
     - name: "Reject unsafe cleanup path"
       block:
         - name: "Run unsafe cleanup path"
@@ -50,3 +376,159 @@
             content: "failed as expected\n"
             dest: "/tmp/guardrail-path-failure"
             mode: "0600"
+        - name: "Assert unsafe-path failure"
+          ansible.builtin.assert:
+            that:
+              - "ansible_failed_result.msg == unsafe_cleanup_message"
+
+    - name: "Reject symlink parent during present"
+      block:
+        - name: "Run present with symlink parent"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "present"
+            haproxy_config_directory: "/tmp/haproxy-guardrails-parent-link/config"
+            haproxy_config_path: "/tmp/haproxy-guardrails-parent-link/config/haproxy.cfg"
+            haproxy_managed_marker: "/tmp/haproxy-guardrails-parent-link/config/.idarsi-managed"
+            iac_blueprint:
+              haproxy: {}
+      rescue:
+        - name: "Record present symlink-parent guardrail"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-present-symlink-parent-failure"
+            mode: "0600"
+        - name: "Assert present symlink-parent failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == managed_path_message"
+
+    - name: "Reject symlink target during present"
+      block:
+        - name: "Run present with symlink target"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "present"
+            haproxy_config_directory: "/tmp/haproxy-guardrails-real/config"
+            haproxy_config_path: "/tmp/haproxy-guardrails-real/config/symlink.cfg"
+            haproxy_managed_marker: "/tmp/haproxy-guardrails-real/config/.idarsi-managed"
+            iac_blueprint:
+              haproxy: {}
+      rescue:
+        - name: "Record present symlink-target guardrail"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-present-symlink-target-failure"
+            mode: "0600"
+        - name: "Assert present symlink-target failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == managed_target_message"
+
+    - name: "Reject non-regular target during present"
+      block:
+        - name: "Run present with non-regular target"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "present"
+            haproxy_config_directory: "/tmp/haproxy-guardrails-real/config"
+            haproxy_config_path: "/tmp/haproxy-guardrails-real/config/directory.cfg"
+            haproxy_managed_marker: "/tmp/haproxy-guardrails-real/config/.idarsi-managed"
+            iac_blueprint:
+              haproxy: {}
+      rescue:
+        - name: "Record present non-regular-target guardrail"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-present-nonregular-target-failure"
+            mode: "0600"
+        - name: "Assert present non-regular-target failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == managed_target_message"
+
+    - name: "Reject non-regular target during all_absent"
+      block:
+        - name: "Remove unrelated symlink fixture"
+          ansible.builtin.file:
+            path: "/tmp/haproxy-guardrails-real/config/symlink.cfg"
+            state: "absent"
+        - name: "Run all_absent with non-regular target"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "all_absent"
+            haproxy_config_directory: "/tmp/haproxy-guardrails-real/config"
+            haproxy_config_path: "/tmp/haproxy-guardrails-real/config/directory.cfg"
+            haproxy_managed_marker: "/tmp/haproxy-guardrails-real/config/.idarsi-managed"
+            iac_blueprint:
+              haproxy: {}
+      rescue:
+        - name: "Record all_absent non-regular-target guardrail"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-all-absent-nonregular-target-failure"
+            mode: "0600"
+        - name: "Assert all_absent non-regular-target failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == managed_target_message"
+
+    - name: "Reject symlink target during all_absent"
+      block:
+        - name: "Remove unrelated directory fixture"
+          ansible.builtin.file:
+            path: "/tmp/haproxy-guardrails-real/config/directory.cfg"
+            state: "absent"
+        - name: "Recreate symlink managed target"
+          ansible.builtin.file:
+            src: "/tmp/haproxy-guardrails-real/target.cfg"
+            dest: "/tmp/haproxy-guardrails-real/config/symlink.cfg"
+            state: "link"
+            force: true
+        - name: "Run all_absent with symlink target"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "all_absent"
+            haproxy_config_directory: "/tmp/haproxy-guardrails-real/config"
+            haproxy_config_path: "/tmp/haproxy-guardrails-real/config/symlink.cfg"
+            haproxy_managed_marker: "/tmp/haproxy-guardrails-real/config/.idarsi-managed"
+            iac_blueprint:
+              haproxy: {}
+      rescue:
+        - name: "Record all_absent symlink-target guardrail"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-all-absent-symlink-target-failure"
+            mode: "0600"
+        - name: "Assert all_absent symlink-target failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == managed_target_message"
+
+    - name: "Reject symlink parent during all_absent"
+      block:
+        - name: "Run all_absent with symlink parent"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "all_absent"
+            haproxy_config_directory: "/tmp/haproxy-guardrails-parent-link/config"
+            haproxy_config_path: "/tmp/haproxy-guardrails-parent-link/config/haproxy.cfg"
+            haproxy_managed_marker: "/tmp/haproxy-guardrails-parent-link/config/.idarsi-managed"
+            iac_blueprint:
+              haproxy: {}
+      rescue:
+        - name: "Record all_absent symlink-parent guardrail"
+          ansible.builtin.copy:
+            content: "failed as expected\n"
+            dest: "/tmp/guardrail-all-absent-symlink-parent-failure"
+            mode: "0600"
+        - name: "Assert all_absent symlink-parent failure"
+          ansible.builtin.assert:
+            that:
+              - "(ansible_failed_task.args.fail_msg | default('')) == managed_path_message"

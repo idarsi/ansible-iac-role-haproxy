@@ -1,0 +1,23 @@
+---
+- name: "Verify update service behavior"
+  hosts: "all"
+  vars:
+    haproxy_package_name: "haproxy"
+  tasks:
+    - name: "Read rendered configuration"
+      ansible.builtin.slurp:
+        src: "/etc/haproxy/haproxy.cfg"
+      register: haproxy_config
+    - name: "Gather service facts"
+      ansible.builtin.service_facts:
+    - name: "Gather installed package facts"
+      ansible.builtin.package_facts:
+        manager: "auto"
+    - name: "Assert updated binary is serving the converged configuration"
+      ansible.builtin.assert:
+        that:
+          - "'frontend web' in (haproxy_config.content | b64decode)"
+          - "'server app6 [2001:db8::1]:9001 check' in (haproxy_config.content | b64decode)"
+          - "ansible_facts.services['haproxy.service'].state == 'running'"
+          - "haproxy_package_name in ansible_facts.packages"
+        fail_msg: "The update state must leave the upgraded HAProxy binary running with the converged configuration."

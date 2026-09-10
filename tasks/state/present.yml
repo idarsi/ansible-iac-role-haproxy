@@ -4,6 +4,30 @@
     name: "{{ haproxy_package_name }}"
     state: "present"
 
+- name: "Verify HAProxy privilege-drop account"
+  ansible.builtin.getent:
+    database: "passwd"
+    key: "{{ haproxy_model.global.user }}"
+    fail_key: false
+  register: haproxy_user_entry
+
+- name: "Verify HAProxy privilege-drop group"
+  ansible.builtin.getent:
+    database: "group"
+    key: "{{ haproxy_model.global.group }}"
+    fail_key: false
+  register: haproxy_group_entry
+
+- name: "Require the package-provided non-privileged HAProxy identity"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_model.global.user in ansible_facts.getent_passwd"
+      - "haproxy_model.global.group in ansible_facts.getent_group"
+      - "(ansible_facts.getent_passwd[haproxy_model.global.user][1] | int) > 0"
+      - "(ansible_facts.getent_passwd[haproxy_model.global.user][2] | int) > 0"
+      - "(ansible_facts.getent_group[haproxy_model.global.group][1] | int) > 0"
+    fail_msg: "HAProxy must use the package-provided non-privileged haproxy user and group; the account is missing or privileged."
+
 - name: "Ensure HAProxy configuration directory exists"
   ansible.builtin.stat:
     path: "{{ haproxy_config_directory }}"
@@ -40,9 +64,22 @@
     group: "root"
     mode: "0644"
     validate: "{{ haproxy_binary_path }} -c -f %s"
-  notify:
-    - "validate haproxy configuration"
-    - "reload haproxy"
+  register: haproxy_configuration_render
+
+- name: "Inspect HAProxy service state before configuration reload"
+  ansible.builtin.service_facts:
+  when:
+    - "haproxy_configuration_render is changed"
+    - "not (haproxy_update_package_changed | default(false) | bool)"
+
+- name: "Reload HAProxy after a configuration change"
+  ansible.builtin.service:
+    name: "{{ haproxy_service_name }}"
+    state: "reloaded"
+  when:
+    - "haproxy_configuration_render is changed"
+    - "not (haproxy_update_package_changed | default(false) | bool)"
+    - "ansible_facts.services[haproxy_service_name ~ '.service'].state | default('') == 'running'"
 
 - name: "Enable and start HAProxy"
   ansible.builtin.service:
