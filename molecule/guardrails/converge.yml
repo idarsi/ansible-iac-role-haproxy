@@ -225,9 +225,11 @@
         - name: "Assert wrong TLS CA ownership failure"
           ansible.builtin.assert:
             that:
+              - "ansible_failed_task.name == 'Require a secure readable global TLS CA file'"
               - >-
-                (ansible_failed_task.args.fail_msg | default('')) ==
-                wrong_owner_message
+                (ansible_failed_result.msg | default('') |
+                regex_replace('\s+', ' ') | trim) ==
+                (wrong_owner_message | regex_replace('\s+', ' ') | trim)
 
     - name: "Reject writable TLS CA parent"
       block:
@@ -258,9 +260,12 @@
         - name: "Assert writable TLS CA parent failure"
           ansible.builtin.assert:
             that:
+              - "ansible_failed_task.name == 'Require secure canonical global TLS CA directory parents'"
               - >-
-                (ansible_failed_task.args.fail_msg | default('')) ==
-                writable_ca_parent_message
+                (ansible_failed_result.results | selectattr('failed') |
+                map(attribute='msg') | first | default('') |
+                regex_replace('\s+', ' ') | trim) ==
+                (writable_ca_parent_message | regex_replace('\s+', ' ') | trim)
 
     - name: "Reject wrong TLS CA type"
       block:
@@ -292,9 +297,11 @@
         - name: "Assert wrong TLS CA type failure"
           ansible.builtin.assert:
             that:
+              - "ansible_failed_task.name == 'Require a secure readable global TLS CA file'"
               - >-
-                (ansible_failed_task.args.fail_msg | default('')) ==
-                wrong_type_message
+                (ansible_failed_result.msg | default('') |
+                regex_replace('\s+', ' ') | trim) ==
+                (wrong_type_message | regex_replace('\s+', ' ') | trim)
 
     - name: "Reject writable parent of global TLS CA file"
       block:
@@ -324,9 +331,12 @@
         - name: "Assert writable global CA file parent failure"
           ansible.builtin.assert:
             that:
+              - "ansible_failed_task.name == 'Require secure canonical global TLS CA file parents'"
               - >-
-                (ansible_failed_task.args.fail_msg | default('')) ==
-                writable_ca_file_parent_message
+                (ansible_failed_result.results | selectattr('failed') |
+                map(attribute='msg') | first | default('') |
+                regex_replace('\s+', ' ') | trim) ==
+                (writable_ca_file_parent_message | regex_replace('\s+', ' ') | trim)
 
     - name: "Reject symlinked parent of global TLS CA file"
       block:
