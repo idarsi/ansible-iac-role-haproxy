@@ -5,7 +5,7 @@ driver:
   name: "podman"
 platforms:
   - name: "rocky9-guardrails"
-    image: "quay.io/rockylinux/rockylinux:9-ubi-init"
+    image: "quay.io/rockylinux/rockylinux@sha256:0a384e1e9c7562251c9e2fdc4843b3ea21118e606dabfbe87d41f842f6f006ec"
     command: "/sbin/init"
     privileged: true
     volumes:

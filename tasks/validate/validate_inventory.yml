@@ -16,13 +16,15 @@
       - "haproxy_model.defaults.mode is string"
       - "haproxy_model.defaults.mode in ['http', 'tcp']"
       - "haproxy_model.global.maxconn is integer and haproxy_model.global.maxconn >= 1"
+      - "haproxy_model.global.user == 'haproxy'"
+      - "haproxy_model.global.group == 'haproxy'"
       - >-
         (haproxy_model.frontends | selectattr('mode', 'defined') |
         map(attribute='mode') | list | difference(['http', 'tcp']) | length) == 0
       - >-
         (haproxy_model.backends | selectattr('mode', 'defined') |
         map(attribute='mode') | list | difference(['http', 'tcp']) | length) == 0
-    fail_msg: "HAProxy modes must be 'http' or 'tcp'."
+    fail_msg: "HAProxy modes must be 'http' or 'tcp', and the privilege-drop identity must be the package-provided haproxy user and group."
 
 - name: "Validate HAProxy record types"
   ansible.builtin.assert:
@@ -61,6 +63,7 @@
       - "(haproxy_frontend.certificates | default([]) | select('string') | list | length) == (haproxy_frontend.certificates | default([]) | length)"
       - "(haproxy_frontend.certificates | default([]) | select('match', '^/') | list | length) == (haproxy_frontend.certificates | default([]) | length)"
       - "(haproxy_frontend.certificates | default([]) | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0"
+      - "(haproxy_frontend.certificates | default([]) | select('search', '[\\r\\n]') | list | length) == 0"
     fail_msg: "Each frontend needs a valid name, bind address, port, and backend reference."
   loop: "{{ haproxy_model.frontends }}"
   loop_control:
@@ -87,9 +90,21 @@
   ansible.builtin.assert:
     that:
       - "haproxy_server_record.1.name is string and haproxy_server_record.1.name is match('^[A-Za-z][A-Za-z0-9_.-]*$')"
-      - "haproxy_server_record.1.address is string and not (haproxy_server_record.1.address is search('[\\x00-\\x1f\\x7f]'))"
+      - "haproxy_server_record.1.address | haproxy_valid_backend_address"
       - "haproxy_server_record.1.check | default(true) is boolean"
       - "haproxy_server_record.1.ssl | default(false) is boolean"
+      - "haproxy_server_record.1.sni is not defined or (haproxy_server_record.1.sni is string and haproxy_server_record.1.sni is match('^[A-Za-z0-9_.-]+$'))"
+      - >-
+        haproxy_server_record.1.verifyhost is not defined or
+        (haproxy_server_record.1.verifyhost is string and
+        haproxy_server_record.1.verifyhost is match('^[A-Za-z0-9_.-]+$'))
+      - "not (haproxy_server_record.1.ssl | default(false)) or haproxy_server_record.1.verifyhost is defined"
+    fail_msg: >-
+      Each backend server needs a valid hostname, IPv4 address, or IPv6 literal;
+      address '{{ haproxy_server_record.1.address | default('undefined') }}'
+      is invalid. IPv6 values are parsed as real literals (for example
+      2001:db8::1), and every server needs a unique name and port from 1 to
+      65535.
   loop: "{{ query('ansible.builtin.subelements', haproxy_model.backends, 'servers') }}"
   loop_control:
     loop_var: "haproxy_server_record"
@@ -113,7 +128,64 @@
     that:
       - "haproxy_directive.key is string and haproxy_directive.key is match('^[A-Za-z][A-Za-z0-9_-]*$')"
       - "not ((haproxy_directive.value | string) is search('[\\x00-\\x1f\\x7f]'))"
+      - "haproxy_directive.value is not mapping"
+      - >-
+        haproxy_directive.value is not sequence or haproxy_directive.value is string or
+        (haproxy_directive.value | map('string') | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0
     fail_msg: "HAProxy global and defaults directives must use safe names and values."
   loop: "{{ (haproxy_model.global | dict2items) + (haproxy_model.defaults | dict2items) }}"
   loop_control:
     loop_var: "haproxy_directive"
+
+- name: "Validate nested HAProxy security settings"
+  ansible.builtin.assert:
+    that:
+      - "(haproxy_model.security.keys() | difference(['backend_tls_verify', 'backend_tls_ca_file', 'backend_tls_ca_directory']) | list | length) == 0"
+    fail_msg: "HAProxy security only supports backend_tls_verify=true unless the explicit insecure opt-in haproxy_allow_insecure_backend_tls=true is set."
+
+- name: "Validate HAProxy backend TLS security settings"
+  ansible.builtin.assert:
+    that:
+      - "haproxy_model.security.backend_tls_verify is boolean"
+      - "haproxy_model.security.backend_tls_ca_file is string"
+      - "haproxy_model.security.backend_tls_ca_directory is string"
+      - "not haproxy_model.security.backend_tls_ca_file or haproxy_model.security.backend_tls_ca_file is match('^/')"
+      - "not haproxy_model.security.backend_tls_ca_directory or haproxy_model.security.backend_tls_ca_directory is match('^/')"
+      - "not haproxy_model.security.backend_tls_ca_file or '//' not in haproxy_model.security.backend_tls_ca_file"
+      - "not haproxy_model.security.backend_tls_ca_file or '..' not in haproxy_model.security.backend_tls_ca_file.split('/')"
+      - "not haproxy_model.security.backend_tls_ca_directory or '//' not in haproxy_model.security.backend_tls_ca_directory"
+      - "not haproxy_model.security.backend_tls_ca_directory or '..' not in haproxy_model.security.backend_tls_ca_directory.split('/')"
+      - "not (haproxy_model.security.backend_tls_ca_file and haproxy_model.security.backend_tls_ca_directory)"
+      - >-
+        haproxy_model.security.backend_tls_verify or
+        (haproxy_allow_insecure_backend_tls | default(false) | bool)
+    fail_msg: "HAProxy security only supports backend_tls_verify=true unless the explicit insecure opt-in haproxy_allow_insecure_backend_tls=true is set."
+
+- name: "Validate secure backend TLS trust material"
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (haproxy_server_record.1.ssl | default(false)) or
+        not haproxy_model.security.backend_tls_verify or
+        haproxy_model.security.backend_tls_ca_file | length > 0 or
+        (haproxy_model.security.backend_tls_ca_directory | length > 0 and
+        haproxy_server_record.1.ca_file is defined and
+        haproxy_server_record.1.ca_file is string and
+        haproxy_server_record.1.ca_file is match('^[A-Za-z0-9_.-]+$'))
+      - >-
+        not (haproxy_server_record.1.ssl | default(false)) or
+        not haproxy_model.security.backend_tls_verify or
+        haproxy_server_record.1.verifyhost is defined
+      - >-
+        haproxy_server_record.1.ca_file is not defined or
+        (haproxy_server_record.1.ca_file is string and
+        haproxy_server_record.1.ca_file is match('^[A-Za-z0-9_.-]+$') and
+        (haproxy_model.security.backend_tls_ca_directory | length) > 0 and
+        not haproxy_model.security.backend_tls_ca_file)
+    fail_msg: >-
+      Secure TLS backend server '{{ haproxy_server_record.1.name | default('unknown') }}' requires
+      trust material: set security.backend_tls_ca_file, or set security.backend_tls_ca_directory
+      and server.ca_file, and provide verifyhost.
+  loop: "{{ query('ansible.builtin.subelements', haproxy_model.backends, 'servers') }}"
+  loop_control:
+    loop_var: "haproxy_server_record"

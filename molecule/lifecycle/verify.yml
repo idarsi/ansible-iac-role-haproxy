@@ -1,0 +1,15 @@
+---
+- name: "Verify inactive-service configuration convergence"
+  hosts: "all"
+  tasks:
+    - name: "Read rendered configuration"
+      ansible.builtin.slurp:
+        src: "/etc/haproxy/haproxy.cfg"
+      register: lifecycle_configuration
+    - name: "Inspect HAProxy service"
+      ansible.builtin.service_facts:
+    - name: "Assert changed configuration started HAProxy successfully"
+      ansible.builtin.assert:
+        that:
+          - "'bind 127.0.0.1:8081' in (lifecycle_configuration.content | b64decode)"
+          - "ansible_facts.services['haproxy.service'].state == 'running'"

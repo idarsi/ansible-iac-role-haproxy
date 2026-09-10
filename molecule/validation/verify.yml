@@ -31,7 +31,10 @@
         - name: "Assert actionable unknown-key failure"
           ansible.builtin.assert:
             that:
-              - "'Unknown iac_blueprint.haproxy key' in ansible_failed_result.msg"
+              - >-
+                (ansible_failed_task.args.fail_msg | default('')) ==
+                'Unknown iac_blueprint.haproxy key; use global, defaults, frontends,
+                backends, stats, or security.'
       always:
         - name: "Require invalid inventory to fail"
           ansible.builtin.assert:

@@ -11,9 +11,9 @@
     that:
       - >-
         (iac_blueprint.haproxy.keys() |
-        difference(['global', 'defaults', 'frontends', 'backends', 'stats']) |
+        difference(['global', 'defaults', 'frontends', 'backends', 'stats', 'security']) |
         list | length) == 0
-    fail_msg: "Unknown iac_blueprint.haproxy key; use global, defaults, frontends, backends, or stats."
+    fail_msg: "Unknown iac_blueprint.haproxy key; use global, defaults, frontends, backends, stats, or security."
 
 - name: "Validate HAProxy managed paths before mutation"
   ansible.builtin.assert:
@@ -22,10 +22,16 @@
       - "haproxy_config_path is string and haproxy_config_path.startswith('/')"
       - "haproxy_managed_marker is string and haproxy_managed_marker.startswith('/')"
       - "haproxy_config_directory not in ['/', '/etc', '/usr', '/var', '/home', '/root']"
+      - "not haproxy_config_directory.endswith('/')"
+      - "'//' not in haproxy_config_directory"
       - "haproxy_managed_marker == haproxy_config_directory ~ '/.idarsi-managed'"
       - "haproxy_config_path.startswith(haproxy_config_directory ~ '/')"
+      - "not haproxy_config_path.endswith('/')"
+      - "'//' not in haproxy_config_path"
       - "'..' not in haproxy_config_directory.split('/')"
+      - "'.' not in haproxy_config_directory.split('/')"
       - "'..' not in haproxy_config_path.split('/')"
+      - "'.' not in haproxy_config_path.split('/')"
     fail_msg: "HAProxy managed paths must be absolute, canonical child paths; destructive cleanup refuses system parent paths."
 
 - name: "Validate HAProxy blueprint section types before normalization"
@@ -36,4 +42,19 @@
       - "iac_blueprint.haproxy.frontends | default([]) is sequence and iac_blueprint.haproxy.frontends | default([]) is not string"
       - "iac_blueprint.haproxy.backends | default([]) is sequence and iac_blueprint.haproxy.backends | default([]) is not string"
       - "iac_blueprint.haproxy.stats | default({}) is mapping"
+      - "iac_blueprint.haproxy.security | default({}) is mapping"
     fail_msg: "HAProxy global, defaults, and stats must be mappings; frontends and backends must be lists."
+
+- name: "Reject public privilege-changing global directives"
+  ansible.builtin.assert:
+    that:
+      - >-
+        (iac_blueprint.haproxy.global | default({}) | dict2items |
+        map(attribute='key') | map('lower') | list |
+        intersect(['user', 'group', 'uid', 'gid', 'setuid', 'setgid', 'chroot']) |
+        length) == 0
+    fail_msg: >-
+      HAProxy global privilege-changing directives (user, group, uid, gid,
+      setuid, setgid, and chroot) are not supported; the package-provided
+      haproxy identity is enforced by this role; the privilege-drop identity
+      cannot be overridden.

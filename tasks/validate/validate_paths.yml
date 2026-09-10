@@ -1,0 +1,55 @@
+---
+- name: "Inspect managed targets without following symlinks"
+  ansible.builtin.stat:
+    path: "{{ managed_target }}"
+    follow: false
+  loop:
+    - "{{ haproxy_config_directory }}"
+    - "{{ haproxy_config_path }}"
+    - "{{ haproxy_managed_marker }}"
+  loop_control:
+    loop_var: "managed_target"
+  register: haproxy_managed_targets
+
+- name: "Reject symlink and non-regular managed targets"
+  ansible.builtin.assert:
+    that:
+      - >-
+        managed_target_result.managed_target != haproxy_config_directory
+        or not managed_target_result.stat.islnk | default(false)
+        and (not managed_target_result.stat.exists or managed_target_result.stat.isdir | default(false))
+      - >-
+        managed_target_result.managed_target == haproxy_config_directory
+        or not managed_target_result.stat.islnk | default(false)
+        and (not managed_target_result.stat.exists or managed_target_result.stat.isreg | default(false))
+    fail_msg: "Refusing HAProxy operation: a managed target is a symlink or has the wrong file type."
+  loop: "{{ haproxy_managed_targets.results }}"
+  loop_control:
+    loop_var: "managed_target_result"
+
+- name: "Resolve managed paths without following a writable target"
+  ansible.builtin.command:
+    argv:
+      - "/usr/bin/realpath"
+      - "-m"
+      - "--"
+      - "{{ managed_path }}"
+  loop:
+    - "{{ haproxy_config_directory }}"
+    - "{{ haproxy_config_path }}"
+    - "{{ haproxy_managed_marker }}"
+  loop_control:
+    loop_var: "managed_path"
+  register: haproxy_canonical_paths
+  changed_when: false
+  check_mode: false
+
+- name: "Reject symlink parent components and non-canonical managed paths"
+  ansible.builtin.assert:
+    that:
+      - "managed_path_result.rc == 0"
+      - "managed_path_result.stdout == managed_path_result.managed_path"
+    fail_msg: "Refusing HAProxy operation: managed paths or one of their parent components is a symlink or non-canonical path."
+  loop: "{{ haproxy_canonical_paths.results }}"
+  loop_control:
+    loop_var: "managed_path_result"

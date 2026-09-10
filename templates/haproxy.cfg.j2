@@ -3,6 +3,9 @@ global
 {% for key, value in h.global.items() %}
   {{ key | replace('_', ' ') }}{% if value is sequence and value is not string %} {{ value | join(' ') }}{% else %} {{ value }}{% endif %}{{ '\n' }}
 {% endfor %}
+{% if h.security.backend_tls_ca_directory | default('') %}
+  ca-base {{ h.security.backend_tls_ca_directory }}{{ '\n' }}
+{% endif %}
 {{ '\n' }}
 defaults
 {% for key, value in h.defaults.items() %}
@@ -22,7 +25,7 @@ frontend {{ frontend.name }}
 backend {{ backend.name }}
   mode {{ backend.mode | default(h.defaults.mode | default('http')) }}{{ '\n' }}
 {% for server in backend.servers %}
-  server {{ server.name }} {{ server.address }}:{{ server.port }}{% if server.check | default(true) %} check{% endif %}{% if server.ssl | default(false) %} ssl{% endif %}{{ '\n' }}
+  server {{ server.name }} {% if ':' in server.address %}[{{ server.address }}]{% else %}{{ server.address }}{% endif %}:{{ server.port }}{% if server.check | default(true) %} check{% endif %}{% if server.ssl | default(false) %} ssl{% if h.security.backend_tls_verify | default(true) %} verify required{% else %} verify none{% endif %}{% if h.security.backend_tls_verify | default(true) %} ca-file {{ server.ca_file | default(h.security.backend_tls_ca_file) }}{% endif %}{% if server.sni is defined %} sni str({{ server.sni }}){% endif %}{% if server.verifyhost is defined %} verifyhost {{ server.verifyhost }}{% endif %}{% endif %}{{ '\n' }}
 {% endfor %}
 {% endfor %}
 {% if h.stats.enabled | default(false) %}

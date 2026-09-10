@@ -16,8 +16,20 @@
       loop:
         - "/tmp/guardrail-unmanaged-failure"
         - "/tmp/guardrail-path-failure"
+        - "/tmp/guardrail-tls-ca-parent-failure"
+        - "/tmp/guardrail-tls-ca-owner-failure"
+        - "/tmp/guardrail-tls-ca-writable-parent-failure"
+        - "/tmp/guardrail-tls-ca-type-failure"
+        - "/tmp/guardrail-tls-ca-file-writable-parent-failure"
+        - "/tmp/guardrail-tls-ca-file-symlink-parent-failure"
+        - "/tmp/guardrail-present-symlink-parent-failure"
+        - "/tmp/guardrail-present-symlink-target-failure"
+        - "/tmp/guardrail-present-nonregular-target-failure"
+        - "/tmp/guardrail-all-absent-nonregular-target-failure"
+        - "/tmp/guardrail-all-absent-symlink-target-failure"
+        - "/tmp/guardrail-all-absent-symlink-parent-failure"
       register: guardrail_sentinels
     - name: "Verify guardrails rejected unsafe operations"
       ansible.builtin.assert:
         that:
-          - "guardrail_sentinels.results | map(attribute='stat.exists') | select('equalto', true) | list | length == 2"
+          - "guardrail_sentinels.results | map(attribute='stat.exists') | select('equalto', true) | list | length == 14"
