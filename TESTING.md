@@ -80,7 +80,10 @@ CI runs `yamllint`, syntax check, production-profile `ansible-lint`, and all
 five Molecule scenarios on pull requests and pushes to `main`. The automated
 matrix currently covers Rocky Linux 9 only; broader platform coverage is
 scheduled work. The local shared environment has not been used to establish
-CI-version equivalence, and the full suite has not been verified locally.
+CI-version equivalence. All five scenarios (validation, baseline, guardrails,
+update, lifecycle) have passed locally with
+`quay.io/rockylinux/rockylinux:9-ubi-init`; they were invoked individually as
+shown above, not together with `molecule --all`.
 
 RHEL 9/10 and Rocky Linux 10 are supported but are not in this automated
 matrix. Invalid-input cases assert validation failure before mutation. Firewall,
