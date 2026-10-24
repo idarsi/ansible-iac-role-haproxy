@@ -137,6 +137,25 @@
   loop_control:
     loop_var: "haproxy_directive"
 
+- name: "Reject unsafe inherited TLS and admin socket directives"
+  ansible.builtin.assert:
+    that:
+      - >-
+        haproxy_directive.key | lower | replace('_', '-') != 'default-server' or
+        (haproxy_directive.value is string and
+        not (haproxy_directive.value is regex('(^|\\s)ssl(\\s|$)', ignorecase=true)))
+      - >-
+        ((haproxy_directive.key | lower | replace('_', ' ')) ~ ' ' ~
+        (haproxy_directive.value | string)) is not
+        regex('(^|\\s)stats\\s+socket(\\s|$)', ignorecase=true)
+    fail_msg: >-
+      TLS in defaults.default-server is not supported; configure TLS explicitly on each
+      server. global stats socket directives are not supported because they can expose an
+      unauthenticated HAProxy admin socket.
+  loop: "{{ (haproxy_model.defaults | dict2items) + (haproxy_model.global | dict2items) }}"
+  loop_control:
+    loop_var: "haproxy_directive"
+
 - name: "Validate nested HAProxy security settings"
   ansible.builtin.assert:
     that:

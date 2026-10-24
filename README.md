@@ -1,7 +1,7 @@
 > **Maturity State: Beta**<br>
-> **RC Readiness: 75%**<br>
-> **Assessed ref:** `0339bff` plus the current uncommitted working tree<br>
-> **Limitations:** Validation, update, baseline, guardrails, and lifecycle passed locally (lifecycle passed after reset); an initial stale lifecycle run failed. Local tool versions differ from CI pins, and the full suite was not rerun. Rocky Linux 9 is the only automated platform evidence.
+> **RC Readiness: 77%**<br>
+> **Assessed ref:** `0339bff` plus TLS/stats socket hardening and Rocky 9 Molecule image update<br>
+> **Validation evidence:** All five Molecule scenarios (validation, baseline, guardrails, update, lifecycle) pass with `quay.io/rockylinux/rockylinux:9-ubi-init`. Rocky Linux 9 is the only automated platform evidence.
 
 ANSIBLE-IAC-ROLE-HAPROXY
 ========================
@@ -73,6 +73,11 @@ Safety and limitations
 Frontends, backends, ports, modes, references, duplicate names, and stats
 binds are validated. Stats are restricted to loopback. Backend TLS verification
 is enabled by default; TLS servers must provide `verifyhost` and trust material.
+TLS cannot be enabled through `defaults.default_server`; declare `ssl: true` on
+each TLS server so the role can validate its verification and trust settings.
+Global stats socket directives are rejected (including rendered aliases such
+as `stats: "socket ..."`) to prevent unauthenticated or externally reachable
+admin socket exposure.
 Set `security.backend_tls_ca_file` to an absolute PEM CA bundle, or set
 `security.backend_tls_ca_directory` and each TLS server's `ca_file` to a
 basename in that directory (no `/`, `..`, or traversal is accepted; per-server

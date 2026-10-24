@@ -11,7 +11,13 @@ reproducibility.
 
 | Platform/image | Ansible or application versions | Molecule scenarios | Main coverage |
 | --- | --- | --- | --- |
-| Rocky Linux 9 (`quay.io/rockylinux/rockylinux`, pinned digest) | Distribution HAProxy; CI pins Ansible Core 2.18.6, ansible-lint 25.1.2, Molecule 25.2.0; shared local environment is newer and not equivalent | `validation`, `baseline`, `guardrails`, `update`, `lifecycle` | Validation, TLS and IPv6 rendering, package identity, installation, service, idempotence, latest-package convergence request, inactive-service reconfiguration, destructive guardrails |
+| Rocky Linux 9 x86_64 (`quay.io/rockylinux/rockylinux:9-ubi-init`, rolling major-version tag) | Distribution HAProxy; CI pins Ansible Core 2.18.6, ansible-lint 25.1.2, Molecule 25.2.0; shared local environment is newer and not equivalent | `validation`, `baseline`, `guardrails`, `update`, `lifecycle` | Validation, TLS and IPv6 rendering, package identity, installation, service, idempotence, latest-package convergence request, inactive-service reconfiguration, destructive guardrails |
+
+All privileged scenarios use Rocky's `9-ubi-init` image variant: its current
+rolling tag includes systemd and `/sbin/init`, required by the scenarios'
+`/sbin/init` PID 1 assumption. It remains a moving tag, not a reproducible
+digest; the registry image metadata and executable init path were verified with
+Skopeo and Podman respectively.
 
 ## Scenario coverage
 
@@ -74,7 +80,10 @@ CI runs `yamllint`, syntax check, production-profile `ansible-lint`, and all
 five Molecule scenarios on pull requests and pushes to `main`. The automated
 matrix currently covers Rocky Linux 9 only; broader platform coverage is
 scheduled work. The local shared environment has not been used to establish
-CI-version equivalence, and the full suite has not been verified locally.
+CI-version equivalence. All five scenarios (validation, baseline, guardrails,
+update, lifecycle) have passed locally with
+`quay.io/rockylinux/rockylinux:9-ubi-init`; they were invoked individually as
+shown above, not together with `molecule --all`.
 
 RHEL 9/10 and Rocky Linux 10 are supported but are not in this automated
 matrix. Invalid-input cases assert validation failure before mutation. Firewall,
