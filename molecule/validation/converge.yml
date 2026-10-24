@@ -338,6 +338,82 @@
           ansible.builtin.assert:
             that:
               - "(ansible_failed_task.args.fail_msg | default('')) == validation_security_message"
+    - name: "Reject inherited default-server TLS directives"
+      block:
+        - name: "Run inherited TLS default validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                defaults:
+                  default_server: "ssl verify none"
+      rescue:
+        - name: "Record inherited TLS default guardrail"
+          ansible.builtin.set_fact:
+            inherited_tls_guardrail_passed: true
+        - name: "Assert inherited TLS default was rejected"
+          ansible.builtin.assert:
+            that:
+              - "'default-server' in (ansible_failed_task.args.fail_msg | default(''))"
+    - name: "Reject global stats socket directives"
+      block:
+        - name: "Run exposed admin socket validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  stats_socket: "ipv4@0.0.0.0:9999 level admin"
+      rescue:
+        - name: "Record admin socket guardrail"
+          ansible.builtin.set_fact:
+            admin_socket_guardrail_passed: true
+        - name: "Assert admin socket was rejected"
+          ansible.builtin.assert:
+            that:
+              - "'stats socket' in (ansible_failed_task.args.fail_msg | default(''))"
+    - name: "Reject rendered global stats socket aliases"
+      block:
+        - name: "Run split stats socket validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                global:
+                  stats: "socket ipv4@0.0.0.0:9999 level admin"
+      rescue:
+        - name: "Record split stats socket guardrail"
+          ansible.builtin.set_fact:
+            split_stats_socket_guardrail_passed: true
+        - name: "Assert rendered admin socket was rejected"
+          ansible.builtin.assert:
+            that:
+              - "'stats socket' in (ansible_failed_task.args.fail_msg | default(''))"
+    - name: "Reject non-string inherited TLS values"
+      block:
+        - name: "Run sequence default-server validation"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-haproxy"
+          vars:
+            state: "validate"
+            iac_blueprint:
+              haproxy:
+                defaults:
+                  default_server: ["ssl", "verify", "none"]
+      rescue:
+        - name: "Record sequence default-server guardrail"
+          ansible.builtin.set_fact:
+            sequence_default_server_guardrail_passed: true
+        - name: "Assert sequence default-server was rejected"
+          ansible.builtin.assert:
+            that:
+              - "'default-server' in (ansible_failed_task.args.fail_msg | default(''))"
     - name: "Reject secure TLS without trust material"
       block:
         - name: "Run secure TLS without CA validation"
@@ -408,5 +484,9 @@
           - "setgid_identity_guardrail_passed | default(false)"
           - "chroot_identity_guardrail_passed | default(false)"
           - "tls_guardrail_passed | default(false)"
+          - "inherited_tls_guardrail_passed | default(false)"
+          - "admin_socket_guardrail_passed | default(false)"
+          - "split_stats_socket_guardrail_passed | default(false)"
+          - "sequence_default_server_guardrail_passed | default(false)"
           - "secure_tls_trust_guardrail_passed | default(false)"
           - "ca_traversal_guardrail_passed | default(false)"
