@@ -1,7 +1,7 @@
 > **Maturity State: Beta**<br>
 > **RC Readiness: 77%**<br>
 > **Assessed ref:** `0339bff` plus TLS/stats socket hardening and Rocky 9 Molecule image update<br>
-> **Validation evidence:** All five Molecule scenarios (validation, baseline, guardrails, update, lifecycle) pass with `geerlingguy/docker-rockylinux9-ansible:9-ubi-init`. Rocky Linux 9 is the only automated platform evidence.
+> **Validation evidence:** All five Molecule scenarios (validation, baseline, guardrails, update, lifecycle) pass with `quay.io/rockylinux/rockylinux:9-ubi-init`. Rocky Linux 9 is the only automated platform evidence.
 
 ANSIBLE-IAC-ROLE-HAPROXY
 ========================
