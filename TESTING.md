@@ -11,7 +11,13 @@ reproducibility.
 
 | Platform/image | Ansible or application versions | Molecule scenarios | Main coverage |
 | --- | --- | --- | --- |
-| Rocky Linux 9 (`quay.io/rockylinux/rockylinux`, pinned digest) | Distribution HAProxy; CI pins Ansible Core 2.18.6, ansible-lint 25.1.2, Molecule 25.2.0; shared local environment is newer and not equivalent | `validation`, `baseline`, `guardrails`, `update`, `lifecycle` | Validation, TLS and IPv6 rendering, package identity, installation, service, idempotence, latest-package convergence request, inactive-service reconfiguration, destructive guardrails |
+| Rocky Linux 9 x86_64 (`quay.io/rockylinux/rockylinux:9-ubi-init`, rolling major-version tag) | Distribution HAProxy; CI pins Ansible Core 2.18.6, ansible-lint 25.1.2, Molecule 25.2.0; shared local environment is newer and not equivalent | `validation`, `baseline`, `guardrails`, `update`, `lifecycle` | Validation, TLS and IPv6 rendering, package identity, installation, service, idempotence, latest-package convergence request, inactive-service reconfiguration, destructive guardrails |
+
+All privileged scenarios use Rocky's `9-ubi-init` image variant: its current
+rolling tag includes systemd and `/sbin/init`, required by the scenarios'
+`/sbin/init` PID 1 assumption. It remains a moving tag, not a reproducible
+digest; the registry image metadata and executable init path were verified with
+Skopeo and Podman respectively.
 
 ## Scenario coverage
 

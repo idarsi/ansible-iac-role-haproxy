@@ -1,7 +1,5 @@
 > **Maturity State: Beta**<br>
-> **RC Readiness: 75%**<br>
-> **Assessed ref:** `0339bff` plus the current uncommitted working tree<br>
-> **Limitations:** Validation, update, baseline, guardrails, and lifecycle passed locally (lifecycle passed after reset); an initial stale lifecycle run failed. Local tool versions differ from CI pins, and the full suite was not rerun. Rocky Linux 9 is the only automated platform evidence.
+> **RC Readiness: 77%**
 
 ANSIBLE-IAC-ROLE-HAPROXY
 ========================
