@@ -4,7 +4,7 @@ dependency:
 driver:
   name: "podman"
 platforms:
-  - name: "rocky9"
+  - name: "haproxy-validation-rocky9"
     image: "quay.io/rockylinux/rockylinux:9-ubi-init"
     pre_build_image: true
 provisioner:

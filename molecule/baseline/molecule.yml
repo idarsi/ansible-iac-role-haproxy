@@ -4,7 +4,7 @@ dependency:
 driver:
   name: "podman"
 platforms:
-  - name: "rocky9-baseline"
+  - name: "haproxy-baseline-rocky9"
     image: "quay.io/rockylinux/rockylinux:9-ubi-init"
     command: "/sbin/init"
     privileged: true
