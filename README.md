@@ -1,7 +1,7 @@
-> **Maturity State: Beta**<br>
-> **RC Readiness: 77%**<br>
-> **Assessed ref:** `0339bff` plus TLS/stats socket hardening and Rocky 9 Molecule image update<br>
-> **Validation evidence:** All five Molecule scenarios (validation, baseline, guardrails, update, lifecycle) pass with `quay.io/rockylinux/rockylinux:9-ubi-init`. Rocky Linux 9 is the only automated platform evidence.
+> **Maturity State: Beta**  
+> **RC Readiness: 77%**  
+> **Assessed ref:** `6d15b97` plus the scenario-prefix changes on `update/haproxy-backend-scenario-prefixes`.  
+> **Evidence:** Static review and historical local Rocky Linux 9 results; renamed scenarios have not been runtime-tested. See the [assessment](docs/maturity-assessment.md) for scoring and RC blockers.
 
 ANSIBLE-IAC-ROLE-HAPROXY
 ========================

@@ -11,7 +11,7 @@ reproducibility.
 
 | Platform/image | Ansible or application versions | Molecule scenarios | Main coverage |
 | --- | --- | --- | --- |
-| Rocky Linux 9 x86_64 (`quay.io/rockylinux/rockylinux:9-ubi-init`, rolling major-version tag) | Distribution HAProxy; CI pins Ansible Core 2.18.6, ansible-lint 25.1.2, Molecule 25.2.0; shared local environment is newer and not equivalent | `validation`, `baseline`, `guardrails`, `update`, `lifecycle` | Validation, TLS and IPv6 rendering, package identity, installation, service, idempotence, latest-package convergence request, inactive-service reconfiguration, destructive guardrails |
+| Rocky Linux 9 x86_64 (`quay.io/rockylinux/rockylinux:9-ubi-init`, rolling major-version tag) | Distribution HAProxy; CI pins Ansible Core 2.18.6, ansible-lint 25.1.2, Molecule 25.2.0; shared local environment is newer and not equivalent | `podman-validation`, `podman-baseline`, `podman-guardrails`, `podman-update`, `podman-lifecycle` | Validation, TLS and IPv6 rendering, package identity, installation, service, idempotence, latest-package convergence request, inactive-service reconfiguration, destructive guardrails |
 
 All privileged scenarios use Rocky's `9-ubi-init` image variant: its current
 rolling tag includes systemd and `/sbin/init`, required by the scenarios'
@@ -21,7 +21,7 @@ Skopeo and Podman respectively.
 
 ## Scenario coverage
 
-### validation
+### podman-validation
 
 Runs `state: validate` with the minimal blueprint and performs no host change.
 It also rejects newline-bearing server addresses and unknown nested security
@@ -29,10 +29,10 @@ keys before mutation.
 It also rejects root/arbitrary privilege-drop identities and disabled TLS
 verification without its explicit insecure opt-in.
 Validation checks the inventory schema only; rendering and IPv6 bracket behavior
-are covered by the `baseline` and `update` scenarios. Malformed IPv4 and IPv6
+are covered by the `podman-baseline` and `podman-update` scenarios. Malformed IPv4 and IPv6
 addresses are rejected before mutation.
 
-### baseline
+### podman-baseline
 
 Converges a frontend/backend configuration, verifies secure privilege-drop
 defaults, and verifies the rendered file.
@@ -40,7 +40,7 @@ It renders a TLS backend with `verify none` only when the explicit opt-in is
 enabled.
 Run the converge twice to check idempotence.
 
-### guardrails
+### podman-guardrails
 
 Creates disposable unmanaged content and verifies `all_absent` refuses to
 remove it. It also verifies that a system-root cleanup path is rejected before
@@ -50,7 +50,7 @@ TLS trust guardrails reject symlinked CA parents, non-root-owned CA files, and
 CA paths with the wrong type, with exact failure assertions and sentinels,
 including global CA-file parents and per-server CA-directory parents.
 
-### update
+### podman-update
 
 Requests the latest HAProxy package, converges and validates the configuration,
 then verifies the rendered configuration, running service, and installed
@@ -59,7 +59,7 @@ cannot force a package change, so it does not verify package replacement or a
 package-triggered restart; those behaviors are documented role semantics, not
 coverage provided by this scenario.
 
-### lifecycle
+### podman-lifecycle
 
 Stops HAProxy, changes the rendered configuration, and converges again. It
 verifies that an inactive service is started successfully rather than receiving
@@ -69,21 +69,28 @@ a reload-only operation.
 
 ```bash
 export PATH="${IDARSI_ANSIBLE_TESTING_VENV:?Set IDARSI_ANSIBLE_TESTING_VENV to the shared test environment}/bin:$PATH"
-molecule test -s validation
-molecule test -s baseline
-molecule test -s guardrails
-molecule test -s update
-molecule test -s lifecycle
+molecule test -s podman-validation
+molecule test -s podman-baseline
+molecule test -s podman-guardrails
+molecule test -s podman-update
+molecule test -s podman-lifecycle
 ```
 
 CI runs `yamllint`, syntax check, production-profile `ansible-lint`, and all
-five Molecule scenarios on pull requests and pushes to `main`. The automated
+five Podman Molecule scenarios on pull requests and pushes to `main`. The automated
 matrix currently covers Rocky Linux 9 only; broader platform coverage is
 scheduled work. The local shared environment has not been used to establish
-CI-version equivalence. All five scenarios (validation, baseline, guardrails,
-update, lifecycle) have passed locally with
-`quay.io/rockylinux/rockylinux:9-ubi-init`; they were invoked individually as
-shown above, not together with `molecule --all`.
+CI-version equivalence. Historical local passes were recorded for all five
+scenarios before their `podman-` prefix rename, using
+`quay.io/rockylinux/rockylinux:9-ubi-init`; they were invoked individually,
+not together with `molecule --all`. The renamed scenarios have not been
+runtime-tested as part of the naming change.
+
+All scenario IDs now use `podman-<purpose>` to match their existing Podman
+driver; there are no KVM scenarios. Container names include the role, full
+scenario ID, and platform. Before upgrading a checkout with existing test
+containers, destroy them using the old scenario IDs from the old checkout;
+the renamed scenarios use different Molecule state directories and identities.
 
 RHEL 9/10 and Rocky Linux 10 are supported but are not in this automated
 matrix. Invalid-input cases assert validation failure before mutation. Firewall,

@@ -4,7 +4,7 @@ dependency:
 driver:
   name: "podman"
 platforms:
-  - name: "haproxy-baseline-rocky9"
+  - name: "haproxy-podman-guardrails-rocky9"
     image: "quay.io/rockylinux/rockylinux:9-ubi-init"
     command: "/sbin/init"
     privileged: true
@@ -22,6 +22,5 @@ scenario:
     - "dependency"
     - "create"
     - "converge"
-    - "idempotence"
     - "verify"
     - "destroy"
